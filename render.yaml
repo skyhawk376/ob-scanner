@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: ob-scanner
+    runtime: python
+    plan: free
+    buildCommand: "true"
+    startCommand: python3 -u server.py
+    healthCheckPath: /api/health
+    envVars:
+      - key: HOST
+        value: "0.0.0.0"

@@ -1,0 +1,308 @@
+#!/usr/bin/env python3
+"""
+OB Scanner server — static files + candle proxy (Yahoo / Coinbase).
+No API keys. Brief in-memory cache. Scan-only prototype (no trading).
+
+Usage:
+  python3 server.py          # http://127.0.0.1:8765
+  python3 server.py 9000
+  PORT=10000 python3 server.py   # bind 0.0.0.0:$PORT (Render / PaaS)
+  HOST=0.0.0.0 PORT=8765 python3 server.py
+"""
+from __future__ import annotations
+
+import json
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+CACHE_DIR = ROOT / "cache"
+PORT = 8765
+CACHE_TTL = 60  # seconds
+CACHE: dict[str, tuple[float, bytes, str]] = {}
+
+UA = "Mozilla/5.0 (compatible; OBScanner/1.0; +local)"
+
+# symbol -> (provider, remote_id, label note)
+SYMBOLS = {
+    "BTCUSD": ("coinbase", "BTC-USD", "Coinbase BTC-USD"),
+    "XAUUSD": ("coinbase", "PAXG-USD", "PAXGUSDT/PAXG-USD gold proxy (Coinbase)"),
+    "XAUUSD_FUT": ("yahoo", "GC=F", "COMEX Gold futures (Yahoo GC=F)"),
+    "EURUSD": ("yahoo", "EURUSD=X", "Yahoo EURUSD=X"),
+    "NAS100": ("yahoo", "NQ=F", "CME Nasdaq-100 futures (Yahoo NQ=F)"),
+}
+
+TF_MAP = {
+    # tf -> (coinbase_granularity_sec, yahoo_interval, yahoo_range)
+    "M5": (300, "5m", "5d"),
+    "M15": (900, "15m", "10d"),
+    "H1": (3600, "60m", "60d"),
+}
+
+
+def http_get(url: str, timeout: int = 20, retries: int = 4) -> bytes:
+    last_err: Exception | None = None
+    for attempt in range(retries):
+        try:
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": UA,
+                    "Accept": "application/json",
+                    "Accept-Language": "en-US,en;q=0.9",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return resp.read()
+        except urllib.error.HTTPError as e:
+            last_err = e
+            # Yahoo often 429s under burst; back off and retry
+            if e.code in (429, 500, 502, 503) and attempt < retries - 1:
+                time.sleep(1.2 * (attempt + 1) + (0.3 * attempt))
+                continue
+            raise
+        except Exception as e:
+            last_err = e
+            if attempt < retries - 1:
+                time.sleep(0.8 * (attempt + 1))
+                continue
+            raise
+    raise last_err or RuntimeError("http_get failed")
+
+
+def normalize_coinbase(raw: list) -> list[dict]:
+    # Coinbase: [time, low, high, open, close, volume], newest first
+    out = []
+    for row in raw:
+        t, low, high, o, c, vol = row
+        out.append(
+            {
+                "time": int(t),
+                "open": float(o),
+                "high": float(high),
+                "low": float(low),
+                "close": float(c),
+                "volume": float(vol),
+            }
+        )
+    out.sort(key=lambda x: x["time"])
+    return out
+
+
+def normalize_yahoo(payload: dict) -> list[dict]:
+    result = (payload.get("chart") or {}).get("result")
+    if not result:
+        err = (payload.get("chart") or {}).get("error")
+        raise ValueError(f"Yahoo empty result: {err}")
+    r0 = result[0]
+    ts = r0.get("timestamp") or []
+    quote = (r0.get("indicators") or {}).get("quote") or [{}]
+    q = quote[0]
+    opens, highs, lows, closes, vols = (
+        q.get("open") or [],
+        q.get("high") or [],
+        q.get("low") or [],
+        q.get("close") or [],
+        q.get("volume") or [],
+    )
+    out = []
+    for i, t in enumerate(ts):
+        o, h, l, c = (
+            opens[i] if i < len(opens) else None,
+            highs[i] if i < len(highs) else None,
+            lows[i] if i < len(lows) else None,
+            closes[i] if i < len(closes) else None,
+        )
+        if o is None or h is None or l is None or c is None:
+            continue
+        vol = vols[i] if i < len(vols) and vols[i] is not None else 0.0
+        out.append(
+            {
+                "time": int(t),
+                "open": float(o),
+                "high": float(h),
+                "low": float(l),
+                "close": float(c),
+                "volume": float(vol),
+            }
+        )
+    return out
+
+
+
+def disk_cache_path(symbol: str, tf: str) -> Path:
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    return CACHE_DIR / f"{symbol}_{tf}.json"
+
+
+def write_disk_cache(payload: dict) -> None:
+    try:
+        path = disk_cache_path(payload["symbol"], payload["tf"])
+        path.write_text(json.dumps(payload))
+    except Exception:
+        pass
+
+
+def read_disk_cache(symbol: str, tf: str) -> dict | None:
+    path = disk_cache_path(symbol, tf)
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text())
+        data["from_disk"] = True
+        data["note"] = (data.get("note") or "") + " · stale disk cache (live fetch unavailable)"
+        return data
+    except Exception:
+        return None
+
+
+def fetch_candles(symbol: str, tf: str) -> dict:
+    if symbol not in SYMBOLS:
+        raise ValueError(f"Unknown symbol {symbol}. Known: {list(SYMBOLS)}")
+    if tf not in TF_MAP:
+        raise ValueError(f"Unknown TF {tf}. Known: {list(TF_MAP)}")
+
+    provider, remote, note = SYMBOLS[symbol]
+    gran, y_int, y_range = TF_MAP[tf]
+    cache_key = f"{symbol}:{tf}"
+
+    now = time.time()
+    if cache_key in CACHE:
+        exp, body, ctype = CACHE[cache_key]
+        if now < exp:
+            return json.loads(body.decode())
+
+    try:
+        if provider == "coinbase":
+            # Coinbase returns max ~300 candles; for H1/M15 that's enough for OB scan
+            url = f"https://api.exchange.coinbase.com/products/{remote}/candles?granularity={gran}"
+            raw = json.loads(http_get(url).decode())
+            candles = normalize_coinbase(raw)
+            source = f"coinbase:{remote}"
+        else:
+            hosts = (
+                "https://query2.finance.yahoo.com",
+                "https://query1.finance.yahoo.com",
+            )
+            raw = None
+            last_err: Exception | None = None
+            for host in hosts:
+                url = (
+                    f"{host}/v8/finance/chart/"
+                    f"{urllib.parse.quote(remote)}?interval={y_int}&range={y_range}"
+                )
+                try:
+                    raw = json.loads(http_get(url).decode())
+                    break
+                except Exception as e:
+                    last_err = e
+                    time.sleep(0.5)
+            if raw is None:
+                raise last_err or RuntimeError("Yahoo fetch failed")
+            candles = normalize_yahoo(raw)
+            source = f"yahoo:{remote}"
+
+        payload = {
+            "symbol": symbol,
+            "tf": tf,
+            "source": source,
+            "note": note,
+            "count": len(candles),
+            "cached_for_sec": CACHE_TTL,
+            "candles": candles,
+            "from_disk": False,
+        }
+        write_disk_cache(payload)
+        body = json.dumps(payload).encode()
+        CACHE[cache_key] = (now + CACHE_TTL, body, "application/json")
+        return payload
+    except Exception as e:
+        stale = read_disk_cache(symbol, tf)
+        if stale and stale.get("candles"):
+            stale["live_error"] = str(e)
+            body = json.dumps(stale).encode()
+            # shorter memory cache for stale so we retry live sooner
+            CACHE[cache_key] = (now + 20, body, "application/json")
+            return stale
+        raise
+
+
+class Handler(SimpleHTTPRequestHandler):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, directory=str(ROOT), **kwargs)
+
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        super().end_headers()
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
+
+    def do_GET(self):
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/api/health":
+            return self._json(200, {"ok": True, "symbols": list(SYMBOLS.keys()), "tfs": list(TF_MAP.keys())})
+        if parsed.path == "/api/symbols":
+            return self._json(
+                200,
+                {
+                    "symbols": [
+                        {"id": k, "provider": v[0], "remote": v[1], "note": v[2]} for k, v in SYMBOLS.items()
+                    ]
+                },
+            )
+        if parsed.path == "/api/candles":
+            qs = urllib.parse.parse_qs(parsed.query)
+            symbol = (qs.get("symbol") or ["BTCUSD"])[0].upper()
+            tf = (qs.get("tf") or ["M15"])[0].upper()
+            try:
+                data = fetch_candles(symbol, tf)
+                return self._json(200, data)
+            except Exception as e:
+                return self._json(502, {"error": str(e), "symbol": symbol, "tf": tf})
+        return super().do_GET()
+
+    def _json(self, code: int, obj: dict):
+        body = json.dumps(obj).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, fmt, *args):
+        # quieter logs
+        if args and str(args[0]).startswith("/api/"):
+            super().log_message(fmt, *args)
+
+
+def main():
+    import os
+    import sys
+
+    # Local: python3 server.py [port] ; Render/Railway: bind 0.0.0.0:$PORT
+    if len(sys.argv) > 1:
+        port = int(sys.argv[1])
+    else:
+        port = int(os.environ.get("PORT", str(PORT)))
+    host = os.environ.get("HOST", "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1")
+    httpd = ThreadingHTTPServer((host, port), Handler)
+    print(f"OB Scanner → http://{host}:{port}/")
+    print(f"Serving {ROOT}")
+    print("API: GET /api/candles?symbol=BTCUSD&tf=M15")
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("\nbye")
+
+
+if __name__ == "__main__":
+    main()

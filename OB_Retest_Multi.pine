@@ -1,0 +1,491 @@
+//@version=6
+// OB Retest Multi - retest-only alerts across watchlist x timeframes.
+// alert() ONLY on first touch of a fresh OB (stars >= minStars). NOT on OB creation.
+// Not financial advice. Set exact broker tickers in Inputs.
+indicator("OB Retest Multi", overlay = false, max_bars_back = 500)
+
+minStars      = input.int(4, "Min stars", minval = 0, maxval = 5, group = "Scoring")
+bodyLookback  = input.int(20, "Body lookback", minval = 5, group = "Scoring")
+bodyMult      = input.float(1.5, "Body mult", minval = 0.5, step = 0.1, group = "Scoring")
+breakLookback = input.int(10, "Break lookback", minval = 3, group = "Scoring")
+obWalkback    = input.int(8, "OB walkback", minval = 1, maxval = 20, group = "Scoring")
+bosLookback   = input.int(20, "BOS lookback", minval = 5, group = "Scoring")
+maxActive     = input.int(12, "Max active OBs per context", minval = 1, maxval = 40, group = "Scoring")
+enableAlerts  = input.bool(true, "Fire alert() on retest", group = "Scoring")
+
+gSym = "Symbols"
+sym1 = input.symbol("XAUUSD", "1 XAUUSD", group = gSym)
+en1  = input.bool(true, "On##1", group = gSym)
+sym2 = input.symbol("NAS100", "2 NAS100", group = gSym)
+en2  = input.bool(true, "On##2", group = gSym)
+sym3 = input.symbol("US500", "3 S&P 500 cash", group = gSym)
+en3  = input.bool(true, "On##3", group = gSym)
+sym4 = input.symbol("BTCUSD", "4 BTCUSD", group = gSym)
+en4  = input.bool(true, "On##4", group = gSym)
+sym5 = input.symbol("EURUSD", "5 EURUSD", group = gSym)
+en5  = input.bool(true, "On##5", group = gSym)
+sym6 = input.symbol("GBPUSD", "6 GBPUSD", group = gSym)
+en6  = input.bool(true, "On##6", group = gSym)
+
+gTf = "Timeframes"
+enTf5   = input.bool(true, "5m", group = gTf)
+enTf15  = input.bool(true, "15m", group = gTf)
+enTf30  = input.bool(true, "30m", group = gTf)
+enTf60  = input.bool(true, "60m", group = gTf)
+enTf240 = input.bool(true, "240m", group = gTf)
+enTfD   = input.bool(true, "D", group = gTf)
+
+type ObLite
+    int obBar
+    int dispBar
+    int side
+    float hi
+    float lo
+    float mid
+    int stars
+    bool mitigated
+    bool alertedRetest
+
+f_body(int off) =>
+    math.abs(close[off] - open[off])
+
+f_scoreFvg(int dOff, bool bullish) =>
+    bool hit = false
+    if dOff >= 1
+        if bullish and low[dOff - 1] > high[dOff + 1]
+            hit := true
+        if not bullish and high[dOff - 1] < low[dOff + 1]
+            hit := true
+    if not hit and bar_index >= dOff + 2
+        if bullish and low[dOff] > high[dOff + 2]
+            hit := true
+        if not bullish and high[dOff] < low[dOff + 2]
+            hit := true
+    if not hit
+        for a = 1 to 3
+            ao = dOff - a
+            if ao >= 0
+                if bullish and low[ao] > high[dOff]
+                    hit := true
+                if not bullish and high[ao] < low[dOff]
+                    hit := true
+    hit
+
+f_scoreBos(int dOff, bool bullish) =>
+    float ph = ta.highest(high[dOff + 1], bosLookback)
+    float pl = ta.lowest(low[dOff + 1], bosLookback)
+    bullish ? close[dOff] > ph : close[dOff] < pl
+
+f_scoreSweep(int dOff, bool bullish) =>
+    bool ok = false
+    if bar_index - dOff >= 15
+        if bullish
+            ok := ta.lowest(low[dOff], 6) < ta.lowest(low[dOff + 6], 10)
+        else
+            ok := ta.highest(high[dOff], 6) > ta.highest(high[dOff + 6], 10)
+    ok
+
+f_scorePd(int dOff, int obOff, float midPx, bool bullish) =>
+    float swingLow = ta.lowest(low[dOff + 1], 50)
+    int endOff = math.max(0, dOff - 5)
+    int len = obOff - endOff + 1
+    bool pass = false
+    if len > 0
+        float swingHigh = ta.highest(high[endOff], len)
+        if not na(swingHigh) and swingHigh > swingLow
+            float half = swingLow + 0.5 * (swingHigh - swingLow)
+            pass := bullish ? midPx <= half : midPx >= half
+    pass
+
+f_existsDedup(array<ObLite> obs, int obBar, int side) =>
+    bool found = false
+    int sz = array.size(obs)
+    if sz > 0
+        for i = 0 to sz - 1
+            ObLite o = array.get(obs, i)
+            if o.obBar == obBar and o.side == side
+                found := true
+                break
+    found
+
+// Entry = mid; SL beyond extreme + buffer; TP = 1.5R (mintick from THIS security context)
+f_slTp(float hi, float lo, int side) =>
+    float entry = (hi + lo) / 2.0
+    float rng = math.max(0.0, hi - lo)
+    float buf = math.max(rng * 0.05, syminfo.mintick * 2.0)
+    float sl = side == 1 ? lo - buf : hi + buf
+    float r = math.abs(entry - sl)
+    float tp = side == 1 ? entry + 1.5 * r : entry - 1.5 * r
+    [entry, sl, tp, r]
+
+// Returns [encoded, entry, sl, tp]
+// encoded: 0 = none; else sign(side)*(fireBar*10 + stars)
+f_retestSignal() =>
+    var array<ObLite> obs = array.new<ObLite>()
+    int encoded = 0
+    float outEntry = na
+    float outSl = na
+    float outTp = na
+
+    if barstate.isconfirmed and array.size(obs) > 0
+        for i = 0 to array.size(obs) - 1
+            ObLite o = array.get(obs, i)
+            if not o.mitigated
+                if o.side == 1 and close < o.mid
+                    o.mitigated := true
+                else if o.side == -1 and close > o.mid
+                    o.mitigated := true
+            if not o.mitigated and o.stars >= minStars and not o.alertedRetest
+                if low <= o.hi and high >= o.lo and bar_index > o.dispBar
+                    o.alertedRetest := true
+                    int starsClamped = math.min(5, math.max(0, o.stars))
+                    encoded := o.side * (bar_index * 10 + starsClamped)
+                    [e0, s0, t0, r0] = f_slTp(o.hi, o.lo, o.side)
+                    outEntry := e0
+                    outSl := s0
+                    outTp := t0
+
+    bool enoughHistory = bar_index >= bodyLookback + breakLookback + obWalkback + 55
+    if barstate.isconfirmed and enoughHistory
+        float bodyDisp = f_body(1)
+        float sumB = 0.0
+        for j = 2 to bodyLookback + 1
+            sumB += f_body(j)
+        float avgBody = sumB / bodyLookback
+        bool strongBody = avgBody > 0 and bodyDisp >= bodyMult * avgBody
+        float priorHigh = ta.highest(high[2], breakLookback)
+        float priorLow = ta.lowest(low[2], breakLookback)
+        bool bullDisp = close[1] > open[1] and (strongBody or close[1] > priorHigh)
+        bool bearDisp = close[1] < open[1] and (strongBody or close[1] < priorLow)
+
+        if bullDisp or bearDisp
+            bool isBull = bullDisp
+            int obOff = na
+            for k = 2 to 1 + obWalkback
+                if isBull
+                    if close[k] < open[k]
+                        obOff := k
+                        break
+                else
+                    if close[k] > open[k]
+                        obOff := k
+                        break
+            if not na(obOff)
+                int obBarIdx = bar_index - obOff
+                int dispBarIdx = bar_index - 1
+                int side = isBull ? 1 : -1
+                if not f_existsDedup(obs, obBarIdx, side)
+                    float obHi = high[obOff]
+                    float obLo = low[obOff]
+                    float obMid = (obHi + obLo) / 2.0
+                    bool flFvg = f_scoreFvg(1, isBull)
+                    bool flBos = f_scoreBos(1, isBull)
+                    bool flSweep = f_scoreSweep(1, isBull)
+                    bool flPd = f_scorePd(1, obOff, obMid, isBull)
+                    int stars = (flFvg ? 1 : 0) + (flBos ? 1 : 0) + (flSweep ? 1 : 0) + 1 + (flPd ? 1 : 0)
+                    if stars >= minStars
+                        ObLite o = ObLite.new(obBarIdx, dispBarIdx, side, obHi, obLo, obMid, stars, false, false)
+                        array.push(obs, o)
+                        while array.size(obs) > maxActive
+                            array.shift(obs)
+    [encoded, outEntry, outSl, outTp]
+
+// 36 security pulls (enc, entry, sl, tp)
+[s1_5, e1_5, sl1_5, tp1_5] = request.security(sym1, "5", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s1_15, e1_15, sl1_15, tp1_15] = request.security(sym1, "15", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s1_30, e1_30, sl1_30, tp1_30] = request.security(sym1, "30", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s1_60, e1_60, sl1_60, tp1_60] = request.security(sym1, "60", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s1_240, e1_240, sl1_240, tp1_240] = request.security(sym1, "240", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s1_D, e1_D, sl1_D, tp1_D] = request.security(sym1, "D", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+
+[s2_5, e2_5, sl2_5, tp2_5] = request.security(sym2, "5", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s2_15, e2_15, sl2_15, tp2_15] = request.security(sym2, "15", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s2_30, e2_30, sl2_30, tp2_30] = request.security(sym2, "30", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s2_60, e2_60, sl2_60, tp2_60] = request.security(sym2, "60", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s2_240, e2_240, sl2_240, tp2_240] = request.security(sym2, "240", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s2_D, e2_D, sl2_D, tp2_D] = request.security(sym2, "D", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+
+[s3_5, e3_5, sl3_5, tp3_5] = request.security(sym3, "5", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s3_15, e3_15, sl3_15, tp3_15] = request.security(sym3, "15", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s3_30, e3_30, sl3_30, tp3_30] = request.security(sym3, "30", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s3_60, e3_60, sl3_60, tp3_60] = request.security(sym3, "60", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s3_240, e3_240, sl3_240, tp3_240] = request.security(sym3, "240", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s3_D, e3_D, sl3_D, tp3_D] = request.security(sym3, "D", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+
+[s4_5, e4_5, sl4_5, tp4_5] = request.security(sym4, "5", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s4_15, e4_15, sl4_15, tp4_15] = request.security(sym4, "15", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s4_30, e4_30, sl4_30, tp4_30] = request.security(sym4, "30", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s4_60, e4_60, sl4_60, tp4_60] = request.security(sym4, "60", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s4_240, e4_240, sl4_240, tp4_240] = request.security(sym4, "240", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s4_D, e4_D, sl4_D, tp4_D] = request.security(sym4, "D", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+
+[s5_5, e5_5, sl5_5, tp5_5] = request.security(sym5, "5", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s5_15, e5_15, sl5_15, tp5_15] = request.security(sym5, "15", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s5_30, e5_30, sl5_30, tp5_30] = request.security(sym5, "30", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s5_60, e5_60, sl5_60, tp5_60] = request.security(sym5, "60", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s5_240, e5_240, sl5_240, tp5_240] = request.security(sym5, "240", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s5_D, e5_D, sl5_D, tp5_D] = request.security(sym5, "D", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+
+[s6_5, e6_5, sl6_5, tp6_5] = request.security(sym6, "5", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s6_15, e6_15, sl6_15, tp6_15] = request.security(sym6, "15", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s6_30, e6_30, sl6_30, tp6_30] = request.security(sym6, "30", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s6_60, e6_60, sl6_60, tp6_60] = request.security(sym6, "60", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s6_240, e6_240, sl6_240, tp6_240] = request.security(sym6, "240", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+[s6_D, e6_D, sl6_D, tp6_D] = request.security(sym6, "D", f_retestSignal(), barmerge.gaps_off, barmerge.lookahead_off)
+
+
+var int last_s1_5 = 0
+var int last_s1_15 = 0
+var int last_s1_30 = 0
+var int last_s1_60 = 0
+var int last_s1_240 = 0
+var int last_s1_D = 0
+var int last_s2_5 = 0
+var int last_s2_15 = 0
+var int last_s2_30 = 0
+var int last_s2_60 = 0
+var int last_s2_240 = 0
+var int last_s2_D = 0
+var int last_s3_5 = 0
+var int last_s3_15 = 0
+var int last_s3_30 = 0
+var int last_s3_60 = 0
+var int last_s3_240 = 0
+var int last_s3_D = 0
+var int last_s4_5 = 0
+var int last_s4_15 = 0
+var int last_s4_30 = 0
+var int last_s4_60 = 0
+var int last_s4_240 = 0
+var int last_s4_D = 0
+var int last_s5_5 = 0
+var int last_s5_15 = 0
+var int last_s5_30 = 0
+var int last_s5_60 = 0
+var int last_s5_240 = 0
+var int last_s5_D = 0
+var int last_s6_5 = 0
+var int last_s6_15 = 0
+var int last_s6_30 = 0
+var int last_s6_60 = 0
+var int last_s6_240 = 0
+var int last_s6_D = 0
+
+f_fireId(int enc) =>
+    enc == 0 ? 0 : int(math.abs(enc) / 10)
+
+f_stars(int enc) =>
+    enc == 0 ? 0 : int(math.abs(enc) % 10)
+
+f_sideTxt(int enc) =>
+    enc > 0 ? "Bull" : "Bear"
+
+f_short(string full) =>
+    int p = str.pos(full, ":")
+    na(p) ? full : str.substring(full, p + 1)
+
+// Append fragment if new retest; update lastId; return [anyFired, newLast, msg]
+f_take(bool enS, bool enT, int enc, float entryPx, float slPx, float tpPx, string sy, string tf, int lastId) =>
+    bool fired = false
+    int newLast = lastId
+    string msg = ""
+    int fid = f_fireId(enc)
+    if enS and enT and barstate.isconfirmed and enc != 0 and fid != 0 and fid != lastId
+        fired := true
+        newLast := fid
+        msg := "Retest " + f_sideTxt(enc) + " " + f_short(sy) + " " + tf + " " + str.tostring(f_stars(enc)) + "*"
+        if not na(slPx) and not na(tpPx)
+            msg := msg + " SL=" + str.tostring(slPx, format.mintick) + " TP=" + str.tostring(tpPx, format.mintick)
+    [fired, newLast, msg]
+
+bool anyRetest = false
+
+if barstate.isconfirmed
+    string alertMsg = ""
+    [fired1, newL1, msg1] = f_take(en1, enTf5, s1_5, e1_5, sl1_5, tp1_5, sym1, "5", last_s1_5)
+    last_s1_5 := newL1
+    anyRetest := anyRetest or fired1
+    if str.length(msg1) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg1 : msg1
+    [fired2, newL2, msg2] = f_take(en1, enTf15, s1_15, e1_15, sl1_15, tp1_15, sym1, "15", last_s1_15)
+    last_s1_15 := newL2
+    anyRetest := anyRetest or fired2
+    if str.length(msg2) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg2 : msg2
+    [fired3, newL3, msg3] = f_take(en1, enTf30, s1_30, e1_30, sl1_30, tp1_30, sym1, "30", last_s1_30)
+    last_s1_30 := newL3
+    anyRetest := anyRetest or fired3
+    if str.length(msg3) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg3 : msg3
+    [fired4, newL4, msg4] = f_take(en1, enTf60, s1_60, e1_60, sl1_60, tp1_60, sym1, "60", last_s1_60)
+    last_s1_60 := newL4
+    anyRetest := anyRetest or fired4
+    if str.length(msg4) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg4 : msg4
+    [fired5, newL5, msg5] = f_take(en1, enTf240, s1_240, e1_240, sl1_240, tp1_240, sym1, "240", last_s1_240)
+    last_s1_240 := newL5
+    anyRetest := anyRetest or fired5
+    if str.length(msg5) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg5 : msg5
+    [fired6, newL6, msg6] = f_take(en1, enTfD, s1_D, e1_D, sl1_D, tp1_D, sym1, "D", last_s1_D)
+    last_s1_D := newL6
+    anyRetest := anyRetest or fired6
+    if str.length(msg6) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg6 : msg6
+    [fired7, newL7, msg7] = f_take(en2, enTf5, s2_5, e2_5, sl2_5, tp2_5, sym2, "5", last_s2_5)
+    last_s2_5 := newL7
+    anyRetest := anyRetest or fired7
+    if str.length(msg7) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg7 : msg7
+    [fired8, newL8, msg8] = f_take(en2, enTf15, s2_15, e2_15, sl2_15, tp2_15, sym2, "15", last_s2_15)
+    last_s2_15 := newL8
+    anyRetest := anyRetest or fired8
+    if str.length(msg8) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg8 : msg8
+    [fired9, newL9, msg9] = f_take(en2, enTf30, s2_30, e2_30, sl2_30, tp2_30, sym2, "30", last_s2_30)
+    last_s2_30 := newL9
+    anyRetest := anyRetest or fired9
+    if str.length(msg9) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg9 : msg9
+    [fired10, newL10, msg10] = f_take(en2, enTf60, s2_60, e2_60, sl2_60, tp2_60, sym2, "60", last_s2_60)
+    last_s2_60 := newL10
+    anyRetest := anyRetest or fired10
+    if str.length(msg10) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg10 : msg10
+    [fired11, newL11, msg11] = f_take(en2, enTf240, s2_240, e2_240, sl2_240, tp2_240, sym2, "240", last_s2_240)
+    last_s2_240 := newL11
+    anyRetest := anyRetest or fired11
+    if str.length(msg11) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg11 : msg11
+    [fired12, newL12, msg12] = f_take(en2, enTfD, s2_D, e2_D, sl2_D, tp2_D, sym2, "D", last_s2_D)
+    last_s2_D := newL12
+    anyRetest := anyRetest or fired12
+    if str.length(msg12) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg12 : msg12
+    [fired13, newL13, msg13] = f_take(en3, enTf5, s3_5, e3_5, sl3_5, tp3_5, sym3, "5", last_s3_5)
+    last_s3_5 := newL13
+    anyRetest := anyRetest or fired13
+    if str.length(msg13) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg13 : msg13
+    [fired14, newL14, msg14] = f_take(en3, enTf15, s3_15, e3_15, sl3_15, tp3_15, sym3, "15", last_s3_15)
+    last_s3_15 := newL14
+    anyRetest := anyRetest or fired14
+    if str.length(msg14) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg14 : msg14
+    [fired15, newL15, msg15] = f_take(en3, enTf30, s3_30, e3_30, sl3_30, tp3_30, sym3, "30", last_s3_30)
+    last_s3_30 := newL15
+    anyRetest := anyRetest or fired15
+    if str.length(msg15) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg15 : msg15
+    [fired16, newL16, msg16] = f_take(en3, enTf60, s3_60, e3_60, sl3_60, tp3_60, sym3, "60", last_s3_60)
+    last_s3_60 := newL16
+    anyRetest := anyRetest or fired16
+    if str.length(msg16) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg16 : msg16
+    [fired17, newL17, msg17] = f_take(en3, enTf240, s3_240, e3_240, sl3_240, tp3_240, sym3, "240", last_s3_240)
+    last_s3_240 := newL17
+    anyRetest := anyRetest or fired17
+    if str.length(msg17) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg17 : msg17
+    [fired18, newL18, msg18] = f_take(en3, enTfD, s3_D, e3_D, sl3_D, tp3_D, sym3, "D", last_s3_D)
+    last_s3_D := newL18
+    anyRetest := anyRetest or fired18
+    if str.length(msg18) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg18 : msg18
+    [fired19, newL19, msg19] = f_take(en4, enTf5, s4_5, e4_5, sl4_5, tp4_5, sym4, "5", last_s4_5)
+    last_s4_5 := newL19
+    anyRetest := anyRetest or fired19
+    if str.length(msg19) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg19 : msg19
+    [fired20, newL20, msg20] = f_take(en4, enTf15, s4_15, e4_15, sl4_15, tp4_15, sym4, "15", last_s4_15)
+    last_s4_15 := newL20
+    anyRetest := anyRetest or fired20
+    if str.length(msg20) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg20 : msg20
+    [fired21, newL21, msg21] = f_take(en4, enTf30, s4_30, e4_30, sl4_30, tp4_30, sym4, "30", last_s4_30)
+    last_s4_30 := newL21
+    anyRetest := anyRetest or fired21
+    if str.length(msg21) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg21 : msg21
+    [fired22, newL22, msg22] = f_take(en4, enTf60, s4_60, e4_60, sl4_60, tp4_60, sym4, "60", last_s4_60)
+    last_s4_60 := newL22
+    anyRetest := anyRetest or fired22
+    if str.length(msg22) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg22 : msg22
+    [fired23, newL23, msg23] = f_take(en4, enTf240, s4_240, e4_240, sl4_240, tp4_240, sym4, "240", last_s4_240)
+    last_s4_240 := newL23
+    anyRetest := anyRetest or fired23
+    if str.length(msg23) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg23 : msg23
+    [fired24, newL24, msg24] = f_take(en4, enTfD, s4_D, e4_D, sl4_D, tp4_D, sym4, "D", last_s4_D)
+    last_s4_D := newL24
+    anyRetest := anyRetest or fired24
+    if str.length(msg24) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg24 : msg24
+    [fired25, newL25, msg25] = f_take(en5, enTf5, s5_5, e5_5, sl5_5, tp5_5, sym5, "5", last_s5_5)
+    last_s5_5 := newL25
+    anyRetest := anyRetest or fired25
+    if str.length(msg25) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg25 : msg25
+    [fired26, newL26, msg26] = f_take(en5, enTf15, s5_15, e5_15, sl5_15, tp5_15, sym5, "15", last_s5_15)
+    last_s5_15 := newL26
+    anyRetest := anyRetest or fired26
+    if str.length(msg26) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg26 : msg26
+    [fired27, newL27, msg27] = f_take(en5, enTf30, s5_30, e5_30, sl5_30, tp5_30, sym5, "30", last_s5_30)
+    last_s5_30 := newL27
+    anyRetest := anyRetest or fired27
+    if str.length(msg27) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg27 : msg27
+    [fired28, newL28, msg28] = f_take(en5, enTf60, s5_60, e5_60, sl5_60, tp5_60, sym5, "60", last_s5_60)
+    last_s5_60 := newL28
+    anyRetest := anyRetest or fired28
+    if str.length(msg28) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg28 : msg28
+    [fired29, newL29, msg29] = f_take(en5, enTf240, s5_240, e5_240, sl5_240, tp5_240, sym5, "240", last_s5_240)
+    last_s5_240 := newL29
+    anyRetest := anyRetest or fired29
+    if str.length(msg29) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg29 : msg29
+    [fired30, newL30, msg30] = f_take(en5, enTfD, s5_D, e5_D, sl5_D, tp5_D, sym5, "D", last_s5_D)
+    last_s5_D := newL30
+    anyRetest := anyRetest or fired30
+    if str.length(msg30) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg30 : msg30
+    [fired31, newL31, msg31] = f_take(en6, enTf5, s6_5, e6_5, sl6_5, tp6_5, sym6, "5", last_s6_5)
+    last_s6_5 := newL31
+    anyRetest := anyRetest or fired31
+    if str.length(msg31) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg31 : msg31
+    [fired32, newL32, msg32] = f_take(en6, enTf15, s6_15, e6_15, sl6_15, tp6_15, sym6, "15", last_s6_15)
+    last_s6_15 := newL32
+    anyRetest := anyRetest or fired32
+    if str.length(msg32) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg32 : msg32
+    [fired33, newL33, msg33] = f_take(en6, enTf30, s6_30, e6_30, sl6_30, tp6_30, sym6, "30", last_s6_30)
+    last_s6_30 := newL33
+    anyRetest := anyRetest or fired33
+    if str.length(msg33) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg33 : msg33
+    [fired34, newL34, msg34] = f_take(en6, enTf60, s6_60, e6_60, sl6_60, tp6_60, sym6, "60", last_s6_60)
+    last_s6_60 := newL34
+    anyRetest := anyRetest or fired34
+    if str.length(msg34) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg34 : msg34
+    [fired35, newL35, msg35] = f_take(en6, enTf240, s6_240, e6_240, sl6_240, tp6_240, sym6, "240", last_s6_240)
+    last_s6_240 := newL35
+    anyRetest := anyRetest or fired35
+    if str.length(msg35) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg35 : msg35
+    [fired36, newL36, msg36] = f_take(en6, enTfD, s6_D, e6_D, sl6_D, tp6_D, sym6, "D", last_s6_D)
+    last_s6_D := newL36
+    anyRetest := anyRetest or fired36
+    if str.length(msg36) > 0
+        alertMsg := str.length(alertMsg) > 0 ? alertMsg + " | " + msg36 : msg36
+    if enableAlerts and str.length(alertMsg) > 0
+        alert(alertMsg, alert.freq_once_per_bar_close)
+
+plotshape(anyRetest, title = "Any retest", style = shape.triangleup, location = location.top, size = size.tiny, color = color.new(#26a69a, 0))
+plot(anyRetest ? 1 : 0, title = "Retest flag", display = display.none)
+
+alertcondition(anyRetest, title = "Any retest", message = "OB retest on watchlist")
