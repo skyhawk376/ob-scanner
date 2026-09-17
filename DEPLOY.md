@@ -38,3 +38,9 @@ Free tier serves via **WSGI**, not `python server.py`.
 5. Smoke: `/api/health` and `/api/candles?symbol=BTCUSD&tf=M15`
 
 `wsgi.py` reuses `server.fetch_candles` (stdlib only). Outbound HTTPS to Coinbase/Yahoo must be allowed (free accounts: specific allowlist — Coinbase API and Yahoo finance hosts may need checking).
+
+## After code update (PythonAnywhere)
+
+1. `git pull` in the project folder (e.g. `/home/<user>/ob-scanner`).
+2. Open the **Web** tab → **Reload** the web app so WSGI and static files (`server.py`, `app.js`, `index.html`) pick up the changes.
+3. Hard-refresh the browser (cache-bust) and smoke `/api/health` — `symbols` should list the expanded watchlist.

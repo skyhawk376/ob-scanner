@@ -29,11 +29,17 @@ UA = "Mozilla/5.0 (compatible; OBScanner/1.0; +local)"
 
 # symbol -> (provider, remote_id, label note)
 SYMBOLS = {
-    "BTCUSD": ("coinbase", "BTC-USD", "Coinbase BTC-USD"),
     "XAUUSD": ("coinbase", "PAXG-USD", "PAXGUSDT/PAXG-USD gold proxy (Coinbase)"),
-    "XAUUSD_FUT": ("yahoo", "GC=F", "COMEX Gold futures (Yahoo GC=F)"),
-    "EURUSD": ("yahoo", "EURUSD=X", "Yahoo EURUSD=X"),
     "NAS100": ("yahoo", "NQ=F", "CME Nasdaq-100 futures (Yahoo NQ=F)"),
+    "SP500": ("yahoo", "ES=F", "CME E-mini S&P 500 futures (Yahoo ES=F)"),
+    "BTCUSD": ("coinbase", "BTC-USD", "Coinbase BTC-USD"),
+    "EURUSD": ("yahoo", "EURUSD=X", "Yahoo EURUSD=X"),
+    "GBPUSD": ("yahoo", "GBPUSD=X", "Yahoo GBPUSD=X"),
+    "XAUUSD_FUT": ("yahoo", "GC=F", "COMEX Gold futures (Yahoo GC=F)"),
+    "USDJPY": ("yahoo", "USDJPY=X", "Yahoo USDJPY=X"),
+    "AUDUSD": ("yahoo", "AUDUSD=X", "Yahoo AUDUSD=X"),
+    "US30": ("yahoo", "YM=F", "CBOT Dow futures (Yahoo YM=F)"),
+    "ETHUSD": ("coinbase", "ETH-USD", "Coinbase ETH-USD"),
 }
 
 TF_MAP = {

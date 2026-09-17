@@ -8,27 +8,33 @@
   "use strict";
 
   const WATCHLIST = [
-    { id: "BTCUSD", label: "BTCUSD (Coinbase)" },
     { id: "XAUUSD", label: "XAUUSD → PAXG (gold proxy)" },
-    { id: "XAUUSD_FUT", label: "XAUUSD → GC=F futures" },
-    { id: "EURUSD", label: "EURUSD" },
     { id: "NAS100", label: "NAS100 → NQ=F" },
+    { id: "SP500", label: "SP500 → ES=F" },
+    { id: "BTCUSD", label: "BTCUSD (Coinbase)" },
+    { id: "EURUSD", label: "EURUSD" },
+    { id: "GBPUSD", label: "GBPUSD" },
+    { id: "XAUUSD_FUT", label: "XAUUSD_FUT → GC=F" },
+    { id: "USDJPY", label: "USDJPY" },
+    { id: "AUDUSD", label: "AUDUSD" },
+    { id: "US30", label: "US30 → YM=F" },
+    { id: "ETHUSD", label: "ETHUSD (Coinbase)" },
   ];
 
-  const MAX_OBS = 20;
+  const MAX_OBS = 40;
   const BODY_LOOKBACK = 20;
   const BREAK_LOOKBACK = 10;
   const BOS_LOOKBACK = 20; // stricter lookback for BOS★ (break of structure)
   const BODY_MULT = 1.5;
 
   const state = {
-    symbol: "BTCUSD",
+    symbol: "XAUUSD",
     tf: "M15",
     candles: [],
     obs: [],
     selectedId: null,
     showMitigated: true,
-    minStars: 4,
+    minStars: 5,
     sourceNote: "",
   };
 
@@ -42,6 +48,7 @@
     sourceNote: document.getElementById("sourceNote"),
     errorBanner: document.getElementById("errorBanner"),
     btnRefresh: document.getElementById("btnRefresh"),
+    btnScanAll5: document.getElementById("btnScanAll5"),
     showMitigated: document.getElementById("showMitigated"),
     minStars: document.getElementById("minStars"),
     filterText: document.getElementById("filterText"),
@@ -420,7 +427,11 @@
    * Stars (1 each, max 5): FVG, BOS (break of 20-bar extreme), Sweep, Fresh, P/D.
    * Sorted by stars desc, then unmitigated, then recent; cap MAX_OBS.
    */
-  function detectOrderBlocks(candles) {
+  function detectOrderBlocks(candles, opts) {
+    opts = opts || {};
+    const sym = opts.symbol != null ? opts.symbol : state.symbol;
+    const timeframe = opts.tf != null ? opts.tf : state.tf;
+    const maxObs = opts.maxObs != null ? opts.maxObs : MAX_OBS;
     const obs = [];
     if (!candles || candles.length < BODY_LOOKBACK + BREAK_LOOKBACK + 3) return obs;
 
@@ -509,8 +520,8 @@
         r: sltp.r,
         mitigated,
         mitigatedAt,
-        symbol: state.symbol,
-        tf: state.tf,
+        symbol: sym,
+        tf: timeframe,
         dispBody: body,
         avgBody,
         stars: scored.stars,
@@ -527,7 +538,7 @@
 
     const picked = [];
     for (const o of obs) {
-      if (picked.length >= MAX_OBS) break;
+      if (picked.length >= maxObs) break;
       if (picked.some((p) => p.time === o.time && p.side === o.side)) continue;
       picked.push(o);
     }
@@ -605,6 +616,7 @@
       items = items.filter(
         (o) =>
           o.side.includes(q) ||
+          (o.symbol && o.symbol.toLowerCase().includes(q)) ||
           o.tf.toLowerCase().includes(q) ||
           String(o.high).includes(q) ||
           String(o.stars).includes(q) ||
@@ -636,9 +648,10 @@
         (ob.side === "bullish" ? "bull" : "bear") +
         (ob.mitigated ? " mitigated" : "") +
         (state.selectedId === ob.id ? " active" : "");
+      const symLabel = ob.symbol ? `<span class="sym-tag">${ob.symbol}</span>` : "";
       li.innerHTML = `
         <div class="row">
-          <span class="side">${ob.side === "bullish" ? "BULLISH OB" : "BEARISH OB"}
+          <span class="side">${symLabel}${ob.side === "bullish" ? "BULLISH OB" : "BEARISH OB"}
             <span class="tag ${ob.mitigated ? "dead" : "live"}">${ob.mitigated ? "mitigated" : "active"}</span>
           </span>
           <span class="meta">${ob.tf}</span>
@@ -652,12 +665,7 @@
         <div class="meta">OB ${fmtTime(ob.time)} · Disp ${fmtTime(ob.dispTime)}</div>
       `;
       li.addEventListener("click", () => {
-        state.selectedId = ob.id;
-        renderList();
-        drawObOnChart(ob);
-        setStatus(
-          `Drawing ${ob.side} ${ob.stars}★ OB @ ${fmtPrice(ob.low)}–${fmtPrice(ob.high)}`
-        );
+        focusObFromList(ob);
       });
       el.obList.appendChild(li);
     });
@@ -731,7 +739,168 @@
     }
   }
 
-  function wireUi() {
+
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function setTfButtons(tf) {
+    document.querySelectorAll(".tf-group button").forEach((b) => {
+      b.classList.toggle("active", b.getAttribute("data-tf") === tf);
+    });
+  }
+
+  /** Click a list row: switch symbol/TF if needed, load chart, select that OB. */
+  async function focusObFromList(ob) {
+    const targetSym = ob.symbol || state.symbol;
+    const targetTf = ob.tf || state.tf;
+    const needReload =
+      targetSym !== state.symbol ||
+      targetTf !== state.tf ||
+      !state.candles.length;
+
+    if (needReload) {
+      state.symbol = targetSym;
+      state.tf = targetTf;
+      if (el.symbolSelect) el.symbolSelect.value = targetSym;
+      setTfButtons(targetTf);
+      setStatus(`Loading ${targetSym} ${targetTf} for selected OB…`);
+      await loadData();
+    }
+
+    const match =
+      state.obs.find((o) => o.id === ob.id) ||
+      state.obs.find(
+        (o) => o.time === ob.time && o.side === ob.side && o.stars === ob.stars
+      ) ||
+      state.obs.find((o) => o.time === ob.time && o.side === ob.side) ||
+      ob;
+
+    // If still on multi-scan list and loadData replaced obs, prefer match from chart
+    state.selectedId = match.id;
+    renderList();
+    drawObOnChart(match);
+    setStatus(
+      `Drawing ${match.symbol || state.symbol} ${match.side} ${match.stars}★ OB @ ${fmtPrice(match.low)}–${fmtPrice(match.high)}`
+    );
+  }
+
+  async function fetchCandlesRaw(symbol, tf) {
+    const url = `/api/candles?symbol=${encodeURIComponent(symbol)}&tf=${encodeURIComponent(tf)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
+    if (!data.candles || !data.candles.length) {
+      throw new Error("No candles returned");
+    }
+    return data;
+  }
+
+  /**
+   * Multi-asset hunt: sequential fetch (avoid Yahoo 429), collect stars===5,
+   * optional M5 retry when current TF yields none. Cap ~50.
+   */
+  async function scanAllFiveStars() {
+    const symbols = WATCHLIST.map((s) => s.id);
+    const tf = state.tf;
+    const showMit = state.showMitigated;
+    const collected = [];
+    const zeroOnTf = [];
+    const MULTI_CAP = 50;
+    const SCAN_DELAY_MS = 400;
+
+    if (el.btnScanAll5) el.btnScanAll5.disabled = true;
+    if (el.btnRefresh) el.btnRefresh.disabled = true;
+    showError("");
+
+    try {
+      for (let i = 0; i < symbols.length; i++) {
+        const sym = symbols[i];
+        setStatus(`Scanning ${sym}… ${i + 1}/${symbols.length}`);
+        try {
+          const data = await fetchCandlesRaw(sym, tf);
+          const obs = detectOrderBlocks(data.candles, { symbol: sym, tf });
+          let five = obs.filter((o) => o.stars === 5);
+          if (!showMit) five = five.filter((o) => !o.mitigated);
+          if (five.length === 0) zeroOnTf.push(sym);
+          collected.push(...five);
+        } catch (err) {
+          console.warn(`Scan ${sym} ${tf} failed:`, err);
+        }
+        if (i < symbols.length - 1) await sleep(SCAN_DELAY_MS);
+      }
+
+      // Light boost: M5 for symbols with 0 five-stars on current TF
+      if (tf !== "M5" && zeroOnTf.length) {
+        for (let i = 0; i < zeroOnTf.length; i++) {
+          const sym = zeroOnTf[i];
+          setStatus(
+            `M5 boost ${sym}… ${i + 1}/${zeroOnTf.length} (no 5★ on ${tf})`
+          );
+          try {
+            const data = await fetchCandlesRaw(sym, "M5");
+            const obs = detectOrderBlocks(data.candles, {
+              symbol: sym,
+              tf: "M5",
+            });
+            let five = obs.filter((o) => o.stars === 5);
+            if (!showMit) five = five.filter((o) => !o.mitigated);
+            collected.push(...five);
+          } catch (err) {
+            console.warn(`M5 boost ${sym} failed:`, err);
+          }
+          if (i < zeroOnTf.length - 1) await sleep(SCAN_DELAY_MS);
+        }
+      }
+
+      collected.sort((a, b) => {
+        if (b.stars !== a.stars) return b.stars - a.stars;
+        if (a.mitigated !== b.mitigated) return a.mitigated ? 1 : -1;
+        return b.time - a.time;
+      });
+
+      // Dedupe by symbol+side+time
+      const seen = new Set();
+      const merged = [];
+      for (const o of collected) {
+        const key = `${o.symbol}|${o.side}|${o.time}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        merged.push(o);
+        if (merged.length >= MULTI_CAP) break;
+      }
+
+      state.obs = merged;
+      state.selectedId = null;
+      selectedObForDraw = null;
+      clearZones();
+      if (candleSeries) candleSeries.setMarkers([]);
+
+      // Ensure list filter shows 5★ results
+      if (state.minStars > 5) state.minStars = 5;
+      if (el.minStars) el.minStars.value = String(state.minStars);
+
+      renderList();
+      const active = merged.filter((o) => !o.mitigated).length;
+      setStatus(
+        `Scan all 5★: ${merged.length} found (${active} active) · ${symbols.length} symbols @ ${tf}` +
+          (zeroOnTf.length && tf !== "M5" ? ` · M5 boost on ${zeroOnTf.length}` : "")
+      );
+      el.chartTitle.textContent = `Multi-scan 5★ · ${tf}`;
+      el.sourceNote.textContent = `Merged from ${symbols.length} symbols · click a row to open its chart`;
+    } catch (err) {
+      console.error(err);
+      showError(`Scan all 5★ failed: ${err.message}`);
+      setStatus("Scan all 5★ error — see banner");
+    } finally {
+      if (el.btnScanAll5) el.btnScanAll5.disabled = false;
+      if (el.btnRefresh) el.btnRefresh.disabled = false;
+    }
+  }
+
+    function wireUi() {
     WATCHLIST.forEach((s) => {
       const opt = document.createElement("option");
       opt.value = s.id;
@@ -752,6 +921,9 @@
       });
     });
     el.btnRefresh.addEventListener("click", () => loadData());
+    if (el.btnScanAll5) {
+      el.btnScanAll5.addEventListener("click", () => scanAllFiveStars());
+    }
     el.showMitigated.addEventListener("change", () => {
       state.showMitigated = el.showMitigated.checked;
       renderList();
@@ -773,7 +945,7 @@
   }
 
   // Expose for selftest / console
-  window.__OB = { detectOrderBlocks, scoreOb, computeSlTp, state };
+  window.__OB = { detectOrderBlocks, scoreOb, computeSlTp, scanAllFiveStars, state, WATCHLIST };
 
   // boot
   wireUi();
