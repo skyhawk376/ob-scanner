@@ -36,6 +36,9 @@
     showMitigated: true,
     minStars: 5,
     sourceNote: "",
+    // "multi" = Scan all 5★ list; keep it when clicking a row to open a chart
+    listMode: "single",
+    multiObs: [],
   };
 
   // --- DOM ---
@@ -158,11 +161,13 @@
   let selectedObForDraw = null;
 
   function qualifyingObsForOverlay() {
-    return state.obs.filter(
-      (o) =>
-        !o.mitigated &&
-        o.stars >= state.minStars
-    );
+    return state.obs.filter((o) => {
+      if (o.mitigated || o.stars < state.minStars) return false;
+      // Multi-scan list mixes symbols — only box zones for the chart on screen
+      if (o.symbol && o.symbol !== state.symbol) return false;
+      if (o.tf && o.tf !== state.tf) return false;
+      return true;
+    });
   }
 
   function redrawOverlay() {
@@ -684,10 +689,14 @@
     redrawOverlay();
   }
 
-  async function loadData() {
+  async function loadData(opts) {
+    opts = opts || {};
+    const chartOnly = !!opts.chartOnly; // keep multi-scan list; only refresh candles/chart
     showError("");
     setStatus(`Loading ${state.symbol} ${state.tf}…`);
-    el.chartTitle.textContent = `${state.symbol} · ${state.tf}`;
+    if (!chartOnly) {
+      el.chartTitle.textContent = `${state.symbol} · ${state.tf}`;
+    }
     try {
       const url = `/api/candles?symbol=${encodeURIComponent(state.symbol)}&tf=${encodeURIComponent(state.tf)}`;
       const res = await fetch(url);
@@ -718,17 +727,22 @@
       );
       candleSeries.setMarkers([]);
       clearZones();
-      selectedObForDraw = null;
-
-      state.obs = detectOrderBlocks(state.candles);
-      state.selectedId = null;
-      renderList();
-      chart.timeScale().fitContent();
-      const geMin = state.obs.filter((o) => o.stars >= state.minStars).length;
-      const activeGe = state.obs.filter((o) => !o.mitigated && o.stars >= state.minStars).length;
-      setStatus(
-        `${geMin} OB ≥${state.minStars}★ (${activeGe} active) · ${state.obs.length} capped`
-      );
+      if (!chartOnly) {
+        selectedObForDraw = null;
+        state.obs = detectOrderBlocks(state.candles);
+        state.selectedId = null;
+        state.listMode = "single";
+        state.multiObs = [];
+        renderList();
+        chart.timeScale().fitContent();
+        const geMin = state.obs.filter((o) => o.stars >= state.minStars).length;
+        const activeGe = state.obs.filter((o) => !o.mitigated && o.stars >= state.minStars).length;
+        setStatus(
+          `${geMin} OB ≥${state.minStars}★ (${activeGe} active) · ${state.obs.length} capped`
+        );
+      } else {
+        chart.timeScale().fitContent();
+      }
     } catch (err) {
       console.error(err);
       showError(
@@ -752,6 +766,10 @@
 
   /** Click a list row: switch symbol/TF if needed, load chart, select that OB. */
   async function focusObFromList(ob) {
+    const keepMulti = state.listMode === "multi";
+    const multiSnapshot = keepMulti
+      ? (state.multiObs.length ? state.multiObs.slice() : state.obs.slice())
+      : null;
     const targetSym = ob.symbol || state.symbol;
     const targetTf = ob.tf || state.tf;
     const needReload =
@@ -765,24 +783,48 @@
       if (el.symbolSelect) el.symbolSelect.value = targetSym;
       setTfButtons(targetTf);
       setStatus(`Loading ${targetSym} ${targetTf} for selected OB…`);
-      await loadData();
+      // chartOnly when multi-scan so we don't wipe the merged 5★ list
+      await loadData({ chartOnly: keepMulti });
+    }
+
+    if (keepMulti && multiSnapshot) {
+      state.listMode = "multi";
+      state.multiObs = multiSnapshot;
+      state.obs = multiSnapshot;
     }
 
     const match =
       state.obs.find((o) => o.id === ob.id) ||
       state.obs.find(
-        (o) => o.time === ob.time && o.side === ob.side && o.stars === ob.stars
+        (o) =>
+          o.time === ob.time &&
+          o.side === ob.side &&
+          o.stars === ob.stars &&
+          (!ob.symbol || o.symbol === ob.symbol)
       ) ||
-      state.obs.find((o) => o.time === ob.time && o.side === ob.side) ||
+      state.obs.find(
+        (o) =>
+          o.time === ob.time &&
+          o.side === ob.side &&
+          (!ob.symbol || o.symbol === ob.symbol)
+      ) ||
       ob;
 
-    // If still on multi-scan list and loadData replaced obs, prefer match from chart
     state.selectedId = match.id;
     renderList();
     drawObOnChart(match);
+    const multiNote = keepMulti
+      ? ` · liste multi ${state.obs.length} OB conservée`
+      : "";
     setStatus(
-      `Drawing ${match.symbol || state.symbol} ${match.side} ${match.stars}★ OB @ ${fmtPrice(match.low)}–${fmtPrice(match.high)}`
+      `Drawing ${match.symbol || state.symbol} ${match.side} ${match.stars}★ OB @ ${fmtPrice(match.low)}–${fmtPrice(match.high)}` +
+        multiNote
     );
+    if (keepMulti) {
+      el.chartTitle.textContent = `${state.symbol} · ${state.tf} (multi 5★)`;
+      el.sourceNote.textContent =
+        `Multi-scan list kept · ${state.obs.length} OB · click another row to switch chart`;
+    }
   }
 
   async function fetchCandlesRaw(symbol, tf) {
@@ -872,6 +914,8 @@
         if (merged.length >= MULTI_CAP) break;
       }
 
+      state.listMode = "multi";
+      state.multiObs = merged;
       state.obs = merged;
       state.selectedId = null;
       selectedObForDraw = null;
