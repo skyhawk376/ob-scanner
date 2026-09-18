@@ -843,28 +843,26 @@
   }
 
   /**
-   * Multi-asset + multi-TF hunt: sequential fetch (avoid Yahoo 429),
-   * collect stars===5 across M5 / M15 / H1. Cap ~80. TF shown on each row.
+   * Multi-asset hunt at the currently selected TF only (state.tf).
+   * Sequential fetch (avoid Yahoo 429), collect stars===5. Cap ~80.
+   * TF badge kept on each list row (useful when opening charts).
    */
   async function scanAllFiveStars() {
     const symbols = WATCHLIST.map((s) => s.id);
-    const timeframes = ["M5", "M15", "H1"];
+    const tf = state.tf;
     const showMit = state.showMitigated;
     const collected = [];
     const MULTI_CAP = 80;
     const SCAN_DELAY_MS = 350;
-    const tfRank = { H1: 3, M15: 2, M5: 1 };
-    const jobs = [];
-    symbols.forEach((sym) => timeframes.forEach((tf) => jobs.push({ sym, tf })));
 
     if (el.btnScanAll5) el.btnScanAll5.disabled = true;
     if (el.btnRefresh) el.btnRefresh.disabled = true;
     showError("");
 
     try {
-      for (let i = 0; i < jobs.length; i++) {
-        const { sym, tf } = jobs[i];
-        setStatus(`Scanning ${sym} ${tf}… ${i + 1}/${jobs.length}`);
+      for (let i = 0; i < symbols.length; i++) {
+        const sym = symbols[i];
+        setStatus(`Scanning ${sym} ${tf}… ${i + 1}/${symbols.length}`);
         try {
           const data = await fetchCandlesRaw(sym, tf);
           const obs = detectOrderBlocks(data.candles, { symbol: sym, tf });
@@ -874,14 +872,12 @@
         } catch (err) {
           console.warn(`Scan ${sym} ${tf} failed:`, err);
         }
-        if (i < jobs.length - 1) await sleep(SCAN_DELAY_MS);
+        if (i < symbols.length - 1) await sleep(SCAN_DELAY_MS);
       }
 
       collected.sort((a, b) => {
         if (b.stars !== a.stars) return b.stars - a.stars;
         if (a.mitigated !== b.mitigated) return a.mitigated ? 1 : -1;
-        const tr = (tfRank[b.tf] || 0) - (tfRank[a.tf] || 0);
-        if (tr) return tr; // H1 before M15 before M5
         return b.time - a.time;
       });
 
@@ -910,16 +906,12 @@
 
       renderList();
       const active = merged.filter((o) => !o.mitigated).length;
-      const byTf = timeframes
-        .map((tf) => `${tf}:${merged.filter((o) => o.tf === tf).length}`)
-        .join(" ");
       setStatus(
-        `Scan all 5★: ${merged.length} found (${active} active) · ${symbols.length} symbols × ${timeframes.join("/")}` +
-          ` · ${byTf}`
+        `Scan all 5★: ${merged.length} found (${active} active) · ${symbols.length} symbols @ ${tf}`
       );
-      el.chartTitle.textContent = `Multi-scan 5★ · M5/M15/H1`;
+      el.chartTitle.textContent = `Multi-scan 5★ · ${tf}`;
       el.sourceNote.textContent =
-        `Merged from ${symbols.length} symbols × 3 TFs · each row shows symbole + TF · click to open chart`;
+        `Merged from ${symbols.length} symbols @ ${tf} · each row shows symbole + TF · click to open chart`;
     } catch (err) {
       console.error(err);
       showError(`Scan all 5★ failed: ${err.message}`);
@@ -930,7 +922,13 @@
     }
   }
 
-    function wireUi() {
+  function wireUi() {
+    // Top option: scan every watchlist symbol at the current TF
+    const allOpt = document.createElement("option");
+    allOpt.value = "__ALL__";
+    allOpt.textContent = "Tous les actifs (Scan all)";
+    el.symbolSelect.appendChild(allOpt);
+
     WATCHLIST.forEach((s) => {
       const opt = document.createElement("option");
       opt.value = s.id;
@@ -939,7 +937,13 @@
     });
     el.symbolSelect.value = state.symbol;
     el.symbolSelect.addEventListener("change", () => {
-      state.symbol = el.symbolSelect.value;
+      const v = el.symbolSelect.value;
+      if (v === "__ALL__") {
+        // Do not fetch /api/candles?symbol=__ALL__ — run multi-asset scan at state.tf
+        scanAllFiveStars();
+        return;
+      }
+      state.symbol = v;
       loadData();
     });
     document.querySelectorAll(".tf-group button").forEach((btn) => {
@@ -947,10 +951,20 @@
         document.querySelectorAll(".tf-group button").forEach((b) => b.classList.remove("active"));
         btn.classList.add("active");
         state.tf = btn.getAttribute("data-tf");
-        loadData();
+        if (el.symbolSelect && el.symbolSelect.value === "__ALL__") {
+          scanAllFiveStars();
+        } else {
+          loadData();
+        }
       });
     });
-    el.btnRefresh.addEventListener("click", () => loadData());
+    el.btnRefresh.addEventListener("click", () => {
+      if (el.symbolSelect && el.symbolSelect.value === "__ALL__") {
+        scanAllFiveStars();
+      } else {
+        loadData();
+      }
+    });
     if (el.btnScanAll5) {
       el.btnScanAll5.addEventListener("click", () => scanAllFiveStars());
     }
