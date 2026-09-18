@@ -56,6 +56,11 @@ button, select, input { font: inherit; color: inherit; }
   padding: 0.1rem 0.35rem; border-radius: 4px; margin-right: 0.35rem;
   background: rgba(61, 139, 253, 0.2); color: #9ec1ff; letter-spacing: 0.02em;
 }
+.ob-item .tf-tag {
+  display: inline-block; font-size: 0.65rem; font-weight: 700;
+  padding: 0.1rem 0.35rem; border-radius: 4px; margin-right: 0.35rem;
+  background: rgba(240, 180, 41, 0.18); color: #f0b429; letter-spacing: 0.02em;
+}
 .status { font-size: 0.8rem; color: var(--muted); margin-left: auto; max-width: 360px; text-align: right; }
 
 .layout { display: grid; grid-template-columns: 360px 1fr; height: calc(100% - 72px); min-height: 480px; }

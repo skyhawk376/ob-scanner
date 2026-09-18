@@ -653,13 +653,15 @@
         (ob.side === "bullish" ? "bull" : "bear") +
         (ob.mitigated ? " mitigated" : "") +
         (state.selectedId === ob.id ? " active" : "");
-      const symLabel = ob.symbol ? `<span class="sym-tag">${ob.symbol}</span>` : "";
+      const symLabel = ob.symbol
+        ? `<span class="sym-tag">${ob.symbol}</span>`
+        : `<span class="sym-tag">${state.symbol}</span>`;
+      const tfLabel = `<span class="tf-tag">${ob.tf || state.tf}</span>`;
       li.innerHTML = `
         <div class="row">
-          <span class="side">${symLabel}${ob.side === "bullish" ? "BULLISH OB" : "BEARISH OB"}
+          <span class="side">${symLabel}${tfLabel}${ob.side === "bullish" ? "BULLISH OB" : "BEARISH OB"}
             <span class="tag ${ob.mitigated ? "dead" : "live"}">${ob.mitigated ? "mitigated" : "active"}</span>
           </span>
-          <span class="meta">${ob.tf}</span>
         </div>
         <div class="row stars-row">
           ${starsHtml(ob.stars)}
@@ -841,73 +843,53 @@
   }
 
   /**
-   * Multi-asset hunt: sequential fetch (avoid Yahoo 429), collect stars===5,
-   * optional M5 retry when current TF yields none. Cap ~50.
+   * Multi-asset + multi-TF hunt: sequential fetch (avoid Yahoo 429),
+   * collect stars===5 across M5 / M15 / H1. Cap ~80. TF shown on each row.
    */
   async function scanAllFiveStars() {
     const symbols = WATCHLIST.map((s) => s.id);
-    const tf = state.tf;
+    const timeframes = ["M5", "M15", "H1"];
     const showMit = state.showMitigated;
     const collected = [];
-    const zeroOnTf = [];
-    const MULTI_CAP = 50;
-    const SCAN_DELAY_MS = 400;
+    const MULTI_CAP = 80;
+    const SCAN_DELAY_MS = 350;
+    const tfRank = { H1: 3, M15: 2, M5: 1 };
+    const jobs = [];
+    symbols.forEach((sym) => timeframes.forEach((tf) => jobs.push({ sym, tf })));
 
     if (el.btnScanAll5) el.btnScanAll5.disabled = true;
     if (el.btnRefresh) el.btnRefresh.disabled = true;
     showError("");
 
     try {
-      for (let i = 0; i < symbols.length; i++) {
-        const sym = symbols[i];
-        setStatus(`Scanning ${sym}… ${i + 1}/${symbols.length}`);
+      for (let i = 0; i < jobs.length; i++) {
+        const { sym, tf } = jobs[i];
+        setStatus(`Scanning ${sym} ${tf}… ${i + 1}/${jobs.length}`);
         try {
           const data = await fetchCandlesRaw(sym, tf);
           const obs = detectOrderBlocks(data.candles, { symbol: sym, tf });
           let five = obs.filter((o) => o.stars === 5);
           if (!showMit) five = five.filter((o) => !o.mitigated);
-          if (five.length === 0) zeroOnTf.push(sym);
           collected.push(...five);
         } catch (err) {
           console.warn(`Scan ${sym} ${tf} failed:`, err);
         }
-        if (i < symbols.length - 1) await sleep(SCAN_DELAY_MS);
-      }
-
-      // Light boost: M5 for symbols with 0 five-stars on current TF
-      if (tf !== "M5" && zeroOnTf.length) {
-        for (let i = 0; i < zeroOnTf.length; i++) {
-          const sym = zeroOnTf[i];
-          setStatus(
-            `M5 boost ${sym}… ${i + 1}/${zeroOnTf.length} (no 5★ on ${tf})`
-          );
-          try {
-            const data = await fetchCandlesRaw(sym, "M5");
-            const obs = detectOrderBlocks(data.candles, {
-              symbol: sym,
-              tf: "M5",
-            });
-            let five = obs.filter((o) => o.stars === 5);
-            if (!showMit) five = five.filter((o) => !o.mitigated);
-            collected.push(...five);
-          } catch (err) {
-            console.warn(`M5 boost ${sym} failed:`, err);
-          }
-          if (i < zeroOnTf.length - 1) await sleep(SCAN_DELAY_MS);
-        }
+        if (i < jobs.length - 1) await sleep(SCAN_DELAY_MS);
       }
 
       collected.sort((a, b) => {
         if (b.stars !== a.stars) return b.stars - a.stars;
         if (a.mitigated !== b.mitigated) return a.mitigated ? 1 : -1;
+        const tr = (tfRank[b.tf] || 0) - (tfRank[a.tf] || 0);
+        if (tr) return tr; // H1 before M15 before M5
         return b.time - a.time;
       });
 
-      // Dedupe by symbol+side+time
+      // Dedupe by symbol+tf+side+time
       const seen = new Set();
       const merged = [];
       for (const o of collected) {
-        const key = `${o.symbol}|${o.side}|${o.time}`;
+        const key = `${o.symbol}|${o.tf}|${o.side}|${o.time}`;
         if (seen.has(key)) continue;
         seen.add(key);
         merged.push(o);
@@ -928,12 +910,16 @@
 
       renderList();
       const active = merged.filter((o) => !o.mitigated).length;
+      const byTf = timeframes
+        .map((tf) => `${tf}:${merged.filter((o) => o.tf === tf).length}`)
+        .join(" ");
       setStatus(
-        `Scan all 5★: ${merged.length} found (${active} active) · ${symbols.length} symbols @ ${tf}` +
-          (zeroOnTf.length && tf !== "M5" ? ` · M5 boost on ${zeroOnTf.length}` : "")
+        `Scan all 5★: ${merged.length} found (${active} active) · ${symbols.length} symbols × ${timeframes.join("/")}` +
+          ` · ${byTf}`
       );
-      el.chartTitle.textContent = `Multi-scan 5★ · ${tf}`;
-      el.sourceNote.textContent = `Merged from ${symbols.length} symbols · click a row to open its chart`;
+      el.chartTitle.textContent = `Multi-scan 5★ · M5/M15/H1`;
+      el.sourceNote.textContent =
+        `Merged from ${symbols.length} symbols × 3 TFs · each row shows symbole + TF · click to open chart`;
     } catch (err) {
       console.error(err);
       showError(`Scan all 5★ failed: ${err.message}`);
