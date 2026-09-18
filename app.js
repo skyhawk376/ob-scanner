@@ -19,6 +19,15 @@
     { id: "AUDUSD", label: "AUDUSD" },
     { id: "US30", label: "US30 → YM=F" },
     { id: "ETHUSD", label: "ETHUSD (Coinbase)" },
+    { id: "NZDUSD", label: "NZDUSD → NZDUSD=X" },
+    { id: "USDCAD", label: "USDCAD → USDCAD=X" },
+    { id: "USDCHF", label: "USDCHF → USDCHF=X" },
+    { id: "EURJPY", label: "EURJPY → EURJPY=X" },
+    { id: "GBPJPY", label: "GBPJPY → GBPJPY=X" },
+    { id: "SILVER", label: "SILVER → SI=F (COMEX silver)" },
+    { id: "OIL", label: "OIL → CL=F (WTI crude)" },
+    { id: "RUSSELL", label: "RUSSELL → RTY=F (E-mini Russell 2000)" },
+    { id: "SOLUSD", label: "SOLUSD → SOL-USD (Coinbase)" },
   ];
 
   const MAX_OBS = 40;
@@ -859,7 +868,7 @@
     const TF_RANK = { H1: 3, M15: 2, M5: 1 };
     const showMit = state.showMitigated;
     const collected = [];
-    const WORLD_CAP = 100;
+    const WORLD_CAP = 120;
     const SCAN_DELAY_MS = 350;
     const jobs = [];
     for (const sym of symbols) {

@@ -30,6 +30,20 @@ You can also serve static files with `npx serve` / `python -m http.server`, but 
 | XAUUSD_FUT | Yahoo `GC=F` | COMEX gold **futures** |
 | EURUSD | Yahoo `EURUSD=X` | Via local proxy |
 | NAS100 | Yahoo `NQ=F` | Nasdaq-100 **futures** proxy |
+| GBPUSD | Yahoo `GBPUSD=X` | Via local proxy |
+| USDJPY | Yahoo `USDJPY=X` | Via local proxy |
+| AUDUSD | Yahoo `AUDUSD=X` | Via local proxy |
+| US30 | Yahoo `YM=F` | Dow **futures** proxy |
+| ETHUSD | Coinbase `ETH-USD` | Coinbase spot |
+| NZDUSD | Yahoo `NZDUSD=X` | Via local proxy |
+| USDCAD | Yahoo `USDCAD=X` | Via local proxy |
+| USDCHF | Yahoo `USDCHF=X` | Via local proxy |
+| EURJPY | Yahoo `EURJPY=X` | Via local proxy |
+| GBPJPY | Yahoo `GBPJPY=X` | Via local proxy |
+| SILVER | Yahoo `SI=F` | COMEX silver **futures** |
+| OIL | Yahoo `CL=F` | WTI crude **futures** |
+| RUSSELL | Yahoo `RTY=F` | E-mini Russell 2000 **futures** |
+| SOLUSD | Coinbase `SOL-USD` | Coinbase spot |
 
 Binance public klines are geo-blocked from some hosts (including this box); Coinbase / Yahoo are the working fallbacks.
 

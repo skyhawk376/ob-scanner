@@ -40,6 +40,15 @@ SYMBOLS = {
     "AUDUSD": ("yahoo", "AUDUSD=X", "Yahoo AUDUSD=X"),
     "US30": ("yahoo", "YM=F", "CBOT Dow futures (Yahoo YM=F)"),
     "ETHUSD": ("coinbase", "ETH-USD", "Coinbase ETH-USD"),
+    "NZDUSD": ("yahoo", "NZDUSD=X", "Yahoo NZDUSD=X"),
+    "USDCAD": ("yahoo", "USDCAD=X", "Yahoo USDCAD=X"),
+    "USDCHF": ("yahoo", "USDCHF=X", "Yahoo USDCHF=X"),
+    "EURJPY": ("yahoo", "EURJPY=X", "Yahoo EURJPY=X"),
+    "GBPJPY": ("yahoo", "GBPJPY=X", "Yahoo GBPJPY=X"),
+    "SILVER": ("yahoo", "SI=F", "COMEX Silver futures (Yahoo SI=F)"),
+    "OIL": ("yahoo", "CL=F", "WTI crude oil futures (Yahoo CL=F)"),
+    "RUSSELL": ("yahoo", "RTY=F", "E-mini Russell 2000 futures (Yahoo RTY=F)"),
+    "SOLUSD": ("coinbase", "SOL-USD", "Coinbase SOL-USD"),
 }
 
 TF_MAP = {
