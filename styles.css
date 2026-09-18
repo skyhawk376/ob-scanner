@@ -49,14 +49,6 @@ button, select, input { font: inherit; color: inherit; }
   color: var(--muted);
   border-color: #243044;
 }
-.chk { flex-direction: row !important; align-items: center; gap: 0.4rem !important; padding-bottom: 0.35rem; }
-.chk.actifs-only {
-  white-space: nowrap;
-  font-size: 0.72rem !important;
-  padding-bottom: 0.4rem;
-  user-select: none;
-}
-.chk.actifs-only input { accent-color: var(--accent); }
 .tf-group { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; align-self: end; }
 .tf-group button {
   background: transparent; border: 0; padding: 0.45rem 0.75rem; cursor: pointer; color: var(--muted);
@@ -69,9 +61,6 @@ button, select, input { font: inherit; color: inherit; }
   white-space: nowrap;
 }
 .primary:hover { filter: brightness(1.08); }
-.primary.scan-all {
-  background: linear-gradient(135deg, #1a4d8f, #3d8bfd);
-}
 .primary:disabled { opacity: 0.55; cursor: wait; }
 .ghost.scan-world {
   background: transparent;

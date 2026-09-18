@@ -33,10 +33,10 @@
     candles: [],
     obs: [],
     selectedId: null,
-    showMitigated: false,
+    showMitigated: true,
     minStars: 5,
     sourceNote: "",
-    // "multi" = Scan all 5★ list; keep it when clicking a row to open a chart
+    // "multi" = Scan monde 5★ list; keep it when clicking a row to open a chart
     listMode: "single",
     multiObs: [],
   };
@@ -52,7 +52,6 @@
     errorBanner: document.getElementById("errorBanner"),
     btnPrimary: document.getElementById("btnPrimary"),
     btnScanWorld: document.getElementById("btnScanWorld"),
-    actifsOnly: document.getElementById("actifsOnly"),
     minStars: document.getElementById("minStars"),
     filterText: document.getElementById("filterText"),
     chart: document.getElementById("chart"),
@@ -692,23 +691,6 @@
   }
 
 
-  function isScanAllMode() {
-    return (
-      (el.symbolSelect && el.symbolSelect.value === "__ALL__") ||
-      state.listMode === "multi"
-    );
-  }
-
-  function updatePrimaryCta() {
-    if (!el.btnPrimary) return;
-    const scan = isScanAllMode();
-    el.btnPrimary.textContent = scan ? "Scan all 5★" : "Refresh";
-    el.btnPrimary.classList.toggle("scan-all", scan);
-    el.btnPrimary.title = scan
-      ? "Scan every watchlist symbol for 5★ OBs at the current TF"
-      : "Reload candles and OBs for the selected symbol";
-  }
-
   function setPrimaryDisabled(disabled) {
     const d = !!disabled;
     if (el.btnPrimary) el.btnPrimary.disabled = d;
@@ -769,7 +751,6 @@
       } else {
         chart.timeScale().fitContent();
       }
-      updatePrimaryCta();
     } catch (err) {
       console.error(err);
       showError(
@@ -777,7 +758,6 @@
           `Is the local server running (python3 server.py)? Check network / API limits.`
       );
       setStatus("Error — see banner");
-      updatePrimaryCta();
     }
   }
 
@@ -853,7 +833,6 @@
       el.sourceNote.textContent =
         `Multi-scan list kept · ${state.obs.length} OB · click another row to switch chart`;
     }
-    updatePrimaryCta();
   }
 
   async function fetchCandlesRaw(symbol, tf) {
@@ -870,87 +849,8 @@
   }
 
   /**
-   * Multi-asset hunt at the currently selected TF only (state.tf).
-   * Sequential fetch (avoid Yahoo 429), collect stars===5. Cap ~80.
-   * TF badge kept on each list row (useful when opening charts).
-   */
-  async function scanAllFiveStars() {
-    const symbols = WATCHLIST.map((s) => s.id);
-    const tf = state.tf;
-    const showMit = state.showMitigated;
-    const collected = [];
-    const MULTI_CAP = 80;
-    const SCAN_DELAY_MS = 350;
-
-    setPrimaryDisabled(true);
-    showError("");
-
-    try {
-      for (let i = 0; i < symbols.length; i++) {
-        const sym = symbols[i];
-        setStatus(`Scanning ${sym} ${tf}… ${i + 1}/${symbols.length}`);
-        try {
-          const data = await fetchCandlesRaw(sym, tf);
-          const obs = detectOrderBlocks(data.candles, { symbol: sym, tf });
-          let five = obs.filter((o) => o.stars === 5);
-          if (!showMit) five = five.filter((o) => !o.mitigated);
-          collected.push(...five);
-        } catch (err) {
-          console.warn(`Scan ${sym} ${tf} failed:`, err);
-        }
-        if (i < symbols.length - 1) await sleep(SCAN_DELAY_MS);
-      }
-
-      collected.sort((a, b) => {
-        if (b.stars !== a.stars) return b.stars - a.stars;
-        if (a.mitigated !== b.mitigated) return a.mitigated ? 1 : -1;
-        return b.time - a.time;
-      });
-
-      // Dedupe by symbol+tf+side+time
-      const seen = new Set();
-      const merged = [];
-      for (const o of collected) {
-        const key = `${o.symbol}|${o.tf}|${o.side}|${o.time}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        merged.push(o);
-        if (merged.length >= MULTI_CAP) break;
-      }
-
-      state.listMode = "multi";
-      state.multiObs = merged;
-      state.obs = merged;
-      state.selectedId = null;
-      selectedObForDraw = null;
-      clearZones();
-      if (candleSeries) candleSeries.setMarkers([]);
-
-      // Ensure list filter shows 5★ results
-      if (state.minStars > 5) state.minStars = 5;
-      if (el.minStars) el.minStars.value = String(state.minStars);
-
-      renderList();
-      const active = merged.filter((o) => !o.mitigated).length;
-      setStatus(
-        `Scan all 5★: ${merged.length} found (${active} active) · ${symbols.length} symbols @ ${tf}`
-      );
-      el.chartTitle.textContent = `Multi-scan 5★ · ${tf}`;
-      el.sourceNote.textContent =
-        `Merged from ${symbols.length} symbols @ ${tf} · each row shows symbole + TF · click to open chart`;
-    } catch (err) {
-      console.error(err);
-      showError(`Scan all 5★ failed: ${err.message}`);
-      setStatus("Scan all 5★ error — see banner");
-    } finally {
-      setPrimaryDisabled(false);
-      updatePrimaryCta();
-    }
-  }
-
-  /**
    * World hunt: every watchlist symbol × M5 + M15 + H1.
-   * Sequential (~350ms delay), stars===5, Actifs only / showMitigated.
+   * Sequential (~350ms delay), stars===5; showMitigated controls mitigated inclusion.
    * Dedupe symbol|tf|side|time; sort stars → TF H1>M15>M5 → recent; cap ~100.
    */
   async function scanWorldFiveStars() {
@@ -1034,17 +934,10 @@
       setStatus("Scan monde error — see banner");
     } finally {
       setPrimaryDisabled(false);
-      updatePrimaryCta();
     }
   }
 
   function wireUi() {
-    // Top option: scan every watchlist symbol at the current TF
-    const allOpt = document.createElement("option");
-    allOpt.value = "__ALL__";
-    allOpt.textContent = "Tous les actifs (Scan all)";
-    el.symbolSelect.appendChild(allOpt);
-
     WATCHLIST.forEach((s) => {
       const opt = document.createElement("option");
       opt.value = s.id;
@@ -1053,14 +946,7 @@
     });
     el.symbolSelect.value = state.symbol;
     el.symbolSelect.addEventListener("change", () => {
-      const v = el.symbolSelect.value;
-      updatePrimaryCta();
-      if (v === "__ALL__") {
-        // Do not fetch /api/candles?symbol=__ALL__ — run multi-asset scan at state.tf
-        scanAllFiveStars();
-        return;
-      }
-      state.symbol = v;
+      state.symbol = el.symbolSelect.value;
       loadData();
     });
     document.querySelectorAll(".tf-group button").forEach((btn) => {
@@ -1068,36 +954,17 @@
         document.querySelectorAll(".tf-group button").forEach((b) => b.classList.remove("active"));
         btn.classList.add("active");
         state.tf = btn.getAttribute("data-tf");
-        if (el.symbolSelect && el.symbolSelect.value === "__ALL__") {
-          scanAllFiveStars();
-        } else {
-          loadData();
-        }
+        loadData();
       });
     });
     if (el.btnPrimary) {
       el.btnPrimary.addEventListener("click", () => {
-        if (isScanAllMode()) {
-          scanAllFiveStars();
-        } else {
-          loadData();
-        }
+        loadData();
       });
     }
     if (el.btnScanWorld) {
       el.btnScanWorld.addEventListener("click", () => {
         scanWorldFiveStars();
-      });
-    }
-    if (el.actifsOnly) {
-      // Checked = Actifs only = hide mitigated
-      state.showMitigated = !el.actifsOnly.checked;
-      el.actifsOnly.addEventListener("change", () => {
-        state.showMitigated = !el.actifsOnly.checked;
-        renderList();
-        const geMin = state.obs.filter((o) => o.stars >= state.minStars).length;
-        const shown = filteredObs().length;
-        setStatus(`${shown} shown · ${geMin} OB ≥${state.minStars}★`);
       });
     }
     if (el.minStars) {
@@ -1114,11 +981,10 @@
   }
 
   // Expose for selftest / console
-  window.__OB = { detectOrderBlocks, scoreOb, computeSlTp, scanAllFiveStars, scanWorldFiveStars, state, WATCHLIST };
+  window.__OB = { detectOrderBlocks, scoreOb, computeSlTp, scanWorldFiveStars, state, WATCHLIST };
 
   // boot
   wireUi();
-  updatePrimaryCta();
   initChart();
   loadData();
 })();

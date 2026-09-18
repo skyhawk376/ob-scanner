@@ -38,11 +38,7 @@
           <option value="5" selected>5</option>
         </select>
       </label>
-      <label class="chk actifs-only" title="Hide mitigated OBs (hunt active 5★)">
-        <input type="checkbox" id="actifsOnly" checked />
-        Actifs only
-      </label>
-      <button type="button" id="btnPrimary" class="primary">Refresh</button>
+      <button type="button" id="btnPrimary" class="primary" title="Reload candles and OBs for the selected symbol">Refresh</button>
       <button type="button" id="btnScanWorld" class="ghost scan-world" title="Scan watchlist actifs × M5 + M15 + H1 for 5★ OBs">Scan monde 5★</button>
     </div>
     <div id="status" class="status" aria-live="polite">Ready</div>
@@ -60,7 +56,7 @@
       <ul id="obList" class="ob-list"></ul>
       <p class="hint">
         ★ = FVG + BOS + SWP + FR + PD (max 5). Default filter ≥5★.
-        <strong>Scan all 5★</strong> = watchlist @ TF actif only.
+        <strong>Refresh</strong> = current symbole @ TF.
         <strong>Scan monde</strong> = actifs × M5 + M15 + H1.
         Displacement = body ≥ 1.5× avg(20) or close beyond prior 10-bar H/L.
         Dim zones on chart = unmitigated OBs meeting Min ★; click one for focus.
