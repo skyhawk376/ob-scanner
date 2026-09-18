@@ -33,7 +33,7 @@
     candles: [],
     obs: [],
     selectedId: null,
-    showMitigated: true,
+    showMitigated: false,
     minStars: 5,
     sourceNote: "",
     // "multi" = Scan all 5★ list; keep it when clicking a row to open a chart
@@ -50,9 +50,8 @@
     chartTitle: document.getElementById("chartTitle"),
     sourceNote: document.getElementById("sourceNote"),
     errorBanner: document.getElementById("errorBanner"),
-    btnRefresh: document.getElementById("btnRefresh"),
-    btnScanAll5: document.getElementById("btnScanAll5"),
-    showMitigated: document.getElementById("showMitigated"),
+    btnPrimary: document.getElementById("btnPrimary"),
+    actifsOnly: document.getElementById("actifsOnly"),
     minStars: document.getElementById("minStars"),
     filterText: document.getElementById("filterText"),
     chart: document.getElementById("chart"),
@@ -691,6 +690,28 @@
     redrawOverlay();
   }
 
+
+  function isScanAllMode() {
+    return (
+      (el.symbolSelect && el.symbolSelect.value === "__ALL__") ||
+      state.listMode === "multi"
+    );
+  }
+
+  function updatePrimaryCta() {
+    if (!el.btnPrimary) return;
+    const scan = isScanAllMode();
+    el.btnPrimary.textContent = scan ? "Scan all 5★" : "Refresh";
+    el.btnPrimary.classList.toggle("scan-all", scan);
+    el.btnPrimary.title = scan
+      ? "Scan every watchlist symbol for 5★ OBs at the current TF"
+      : "Reload candles and OBs for the selected symbol";
+  }
+
+  function setPrimaryDisabled(disabled) {
+    if (el.btnPrimary) el.btnPrimary.disabled = !!disabled;
+  }
+
   async function loadData(opts) {
     opts = opts || {};
     const chartOnly = !!opts.chartOnly; // keep multi-scan list; only refresh candles/chart
@@ -745,6 +766,7 @@
       } else {
         chart.timeScale().fitContent();
       }
+      updatePrimaryCta();
     } catch (err) {
       console.error(err);
       showError(
@@ -752,6 +774,7 @@
           `Is the local server running (python3 server.py)? Check network / API limits.`
       );
       setStatus("Error — see banner");
+      updatePrimaryCta();
     }
   }
 
@@ -827,6 +850,7 @@
       el.sourceNote.textContent =
         `Multi-scan list kept · ${state.obs.length} OB · click another row to switch chart`;
     }
+    updatePrimaryCta();
   }
 
   async function fetchCandlesRaw(symbol, tf) {
@@ -855,8 +879,7 @@
     const MULTI_CAP = 80;
     const SCAN_DELAY_MS = 350;
 
-    if (el.btnScanAll5) el.btnScanAll5.disabled = true;
-    if (el.btnRefresh) el.btnRefresh.disabled = true;
+    setPrimaryDisabled(true);
     showError("");
 
     try {
@@ -917,8 +940,8 @@
       showError(`Scan all 5★ failed: ${err.message}`);
       setStatus("Scan all 5★ error — see banner");
     } finally {
-      if (el.btnScanAll5) el.btnScanAll5.disabled = false;
-      if (el.btnRefresh) el.btnRefresh.disabled = false;
+      setPrimaryDisabled(false);
+      updatePrimaryCta();
     }
   }
 
@@ -938,6 +961,7 @@
     el.symbolSelect.value = state.symbol;
     el.symbolSelect.addEventListener("change", () => {
       const v = el.symbolSelect.value;
+      updatePrimaryCta();
       if (v === "__ALL__") {
         // Do not fetch /api/candles?symbol=__ALL__ — run multi-asset scan at state.tf
         scanAllFiveStars();
@@ -958,23 +982,26 @@
         }
       });
     });
-    el.btnRefresh.addEventListener("click", () => {
-      if (el.symbolSelect && el.symbolSelect.value === "__ALL__") {
-        scanAllFiveStars();
-      } else {
-        loadData();
-      }
-    });
-    if (el.btnScanAll5) {
-      el.btnScanAll5.addEventListener("click", () => scanAllFiveStars());
+    if (el.btnPrimary) {
+      el.btnPrimary.addEventListener("click", () => {
+        if (isScanAllMode()) {
+          scanAllFiveStars();
+        } else {
+          loadData();
+        }
+      });
     }
-    el.showMitigated.addEventListener("change", () => {
-      state.showMitigated = el.showMitigated.checked;
-      renderList();
-      const geMin = state.obs.filter((o) => o.stars >= state.minStars).length;
-      const shown = filteredObs().length;
-      setStatus(`${shown} shown · ${geMin} OB ≥${state.minStars}★`);
-    });
+    if (el.actifsOnly) {
+      // Checked = Actifs only = hide mitigated
+      state.showMitigated = !el.actifsOnly.checked;
+      el.actifsOnly.addEventListener("change", () => {
+        state.showMitigated = !el.actifsOnly.checked;
+        renderList();
+        const geMin = state.obs.filter((o) => o.stars >= state.minStars).length;
+        const shown = filteredObs().length;
+        setStatus(`${shown} shown · ${geMin} OB ≥${state.minStars}★`);
+      });
+    }
     if (el.minStars) {
       el.minStars.value = String(state.minStars);
       el.minStars.addEventListener("change", () => {
@@ -993,6 +1020,7 @@
 
   // boot
   wireUi();
+  updatePrimaryCta();
   initChart();
   loadData();
 })();

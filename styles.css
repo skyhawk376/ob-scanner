@@ -36,8 +36,28 @@ button, select, input { font: inherit; color: inherit; }
   padding: 0.4rem 0.55rem; min-width: 120px;
 }
 .controls label select#minStars { min-width: 64px; }
+.controls-spacer { flex: 1 1 auto; min-width: 0.75rem; }
+.control-quiet {
+  opacity: 0.72;
+  font-size: 0.68rem !important;
+  color: var(--muted) !important;
+}
+.control-quiet select {
+  min-width: 52px !important;
+  padding: 0.28rem 0.4rem !important;
+  font-size: 0.78rem;
+  color: var(--muted);
+  border-color: #243044;
+}
 .chk { flex-direction: row !important; align-items: center; gap: 0.4rem !important; padding-bottom: 0.35rem; }
-.tf-group { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.chk.actifs-only {
+  white-space: nowrap;
+  font-size: 0.72rem !important;
+  padding-bottom: 0.4rem;
+  user-select: none;
+}
+.chk.actifs-only input { accent-color: var(--accent); }
+.tf-group { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; align-self: end; }
 .tf-group button {
   background: transparent; border: 0; padding: 0.45rem 0.75rem; cursor: pointer; color: var(--muted);
 }
@@ -45,6 +65,8 @@ button, select, input { font: inherit; color: inherit; }
 .primary {
   background: var(--accent); border: 0; border-radius: 8px; padding: 0.5rem 0.9rem;
   cursor: pointer; font-weight: 600;
+  align-self: end;
+  white-space: nowrap;
 }
 .primary:hover { filter: brightness(1.08); }
 .primary.scan-all {

@@ -18,7 +18,7 @@
     </div>
     <div class="controls">
       <label>
-        Symbol
+        Symbole
         <select id="symbolSelect"></select>
       </label>
       <div class="tf-group" role="group" aria-label="Timeframe">
@@ -26,7 +26,8 @@
         <button type="button" data-tf="M15" class="active">M15</button>
         <button type="button" data-tf="H1">H1</button>
       </div>
-      <label>
+      <div class="controls-spacer" aria-hidden="true"></div>
+      <label class="control-quiet">
         Min ★
         <select id="minStars" title="Show only OBs with at least this many stars">
           <option value="0">0+</option>
@@ -37,12 +38,11 @@
           <option value="5" selected>5</option>
         </select>
       </label>
-      <label class="chk">
-        <input type="checkbox" id="showMitigated" checked />
-        Show mitigated
+      <label class="chk actifs-only" title="Hide mitigated OBs (hunt active 5★)">
+        <input type="checkbox" id="actifsOnly" checked />
+        Actifs only
       </label>
-      <button type="button" id="btnRefresh" class="primary">Refresh</button>
-      <button type="button" id="btnScanAll5" class="primary scan-all" title="Scan every watchlist symbol for 5★ OBs at the current TF">Scan all 5★</button>
+      <button type="button" id="btnPrimary" class="primary">Refresh</button>
     </div>
     <div id="status" class="status" aria-live="polite">Ready</div>
   </header>
@@ -58,7 +58,7 @@
       </div>
       <ul id="obList" class="ob-list"></ul>
       <p class="hint">
-        ★ = FVG + BOS + SWP + FR + PD (max 5). Default filter ≥5★. Use “Scan all 5★” or “Tous les actifs” for a multi-asset hunt at the current TF only.
+        ★ = FVG + BOS + SWP + FR + PD (max 5). Default filter ≥5★. Pick “Tous les actifs” or use the CTA in Scan mode for a multi-asset hunt at the current TF only.
         Displacement = body ≥ 1.5× avg(20) or close beyond prior 10-bar H/L.
         Dim zones on chart = unmitigated OBs meeting Min ★; click one for focus.
       </p>
