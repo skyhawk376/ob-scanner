@@ -51,6 +51,7 @@
     sourceNote: document.getElementById("sourceNote"),
     errorBanner: document.getElementById("errorBanner"),
     btnPrimary: document.getElementById("btnPrimary"),
+    btnScanWorld: document.getElementById("btnScanWorld"),
     actifsOnly: document.getElementById("actifsOnly"),
     minStars: document.getElementById("minStars"),
     filterText: document.getElementById("filterText"),
@@ -709,7 +710,9 @@
   }
 
   function setPrimaryDisabled(disabled) {
-    if (el.btnPrimary) el.btnPrimary.disabled = !!disabled;
+    const d = !!disabled;
+    if (el.btnPrimary) el.btnPrimary.disabled = d;
+    if (el.btnScanWorld) el.btnScanWorld.disabled = d;
   }
 
   async function loadData(opts) {
@@ -945,6 +948,96 @@
     }
   }
 
+  /**
+   * World hunt: every watchlist symbol × M5 + M15 + H1.
+   * Sequential (~350ms delay), stars===5, Actifs only / showMitigated.
+   * Dedupe symbol|tf|side|time; sort stars → TF H1>M15>M5 → recent; cap ~100.
+   */
+  async function scanWorldFiveStars() {
+    const symbols = WATCHLIST.map((s) => s.id);
+    const tfs = ["M5", "M15", "H1"];
+    const TF_RANK = { H1: 3, M15: 2, M5: 1 };
+    const showMit = state.showMitigated;
+    const collected = [];
+    const WORLD_CAP = 100;
+    const SCAN_DELAY_MS = 350;
+    const jobs = [];
+    for (const sym of symbols) {
+      for (const tf of tfs) jobs.push({ sym, tf });
+    }
+    const total = jobs.length;
+
+    setPrimaryDisabled(true);
+    showError("");
+
+    try {
+      for (let i = 0; i < jobs.length; i++) {
+        const { sym, tf } = jobs[i];
+        setStatus(`Scanning ${sym} ${tf}… ${i + 1}/${total}`);
+        try {
+          const data = await fetchCandlesRaw(sym, tf);
+          const obs = detectOrderBlocks(data.candles, { symbol: sym, tf });
+          let five = obs.filter((o) => o.stars === 5);
+          if (!showMit) five = five.filter((o) => !o.mitigated);
+          collected.push(...five);
+        } catch (err) {
+          console.warn(`Scan monde ${sym} ${tf} failed:`, err);
+        }
+        if (i < jobs.length - 1) await sleep(SCAN_DELAY_MS);
+      }
+
+      collected.sort((a, b) => {
+        if (b.stars !== a.stars) return b.stars - a.stars;
+        const ra = TF_RANK[a.tf] || 0;
+        const rb = TF_RANK[b.tf] || 0;
+        if (rb !== ra) return rb - ra;
+        if (a.mitigated !== b.mitigated) return a.mitigated ? 1 : -1;
+        return b.time - a.time;
+      });
+
+      const seen = new Set();
+      const merged = [];
+      for (const o of collected) {
+        const key = `${o.symbol}|${o.tf}|${o.side}|${o.time}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        merged.push(o);
+        if (merged.length >= WORLD_CAP) break;
+      }
+
+      state.listMode = "multi";
+      state.multiObs = merged;
+      state.obs = merged;
+      state.selectedId = null;
+      selectedObForDraw = null;
+      clearZones();
+      if (candleSeries) candleSeries.setMarkers([]);
+
+      if (state.minStars > 5) state.minStars = 5;
+      if (el.minStars) el.minStars.value = String(state.minStars);
+
+      renderList();
+      const active = merged.filter((o) => !o.mitigated).length;
+      const byTf = { M5: 0, M15: 0, H1: 0 };
+      for (const o of merged) {
+        if (byTf[o.tf] != null) byTf[o.tf]++;
+      }
+      setStatus(
+        `Scan monde 5★: ${merged.length} found (${active} active) · H1 ${byTf.H1} · M15 ${byTf.M15} · M5 ${byTf.M5} · ${symbols.length}×3 TF`
+      );
+      el.chartTitle.textContent = `Scan monde 5★ · M5+M15+H1`;
+      el.sourceNote.textContent =
+        `Merged from ${symbols.length} symbols × 3 TF · each row shows symbole + TF · click to open chart`;
+    } catch (err) {
+      console.error(err);
+      showError(`Scan monde failed: ${err.message}`);
+      setStatus("Scan monde error — see banner");
+    } finally {
+      setPrimaryDisabled(false);
+      updatePrimaryCta();
+    }
+  }
+
   function wireUi() {
     // Top option: scan every watchlist symbol at the current TF
     const allOpt = document.createElement("option");
@@ -991,6 +1084,11 @@
         }
       });
     }
+    if (el.btnScanWorld) {
+      el.btnScanWorld.addEventListener("click", () => {
+        scanWorldFiveStars();
+      });
+    }
     if (el.actifsOnly) {
       // Checked = Actifs only = hide mitigated
       state.showMitigated = !el.actifsOnly.checked;
@@ -1016,7 +1114,7 @@
   }
 
   // Expose for selftest / console
-  window.__OB = { detectOrderBlocks, scoreOb, computeSlTp, scanAllFiveStars, state, WATCHLIST };
+  window.__OB = { detectOrderBlocks, scoreOb, computeSlTp, scanAllFiveStars, scanWorldFiveStars, state, WATCHLIST };
 
   // boot
   wireUi();

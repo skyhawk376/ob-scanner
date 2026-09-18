@@ -73,6 +73,23 @@ button, select, input { font: inherit; color: inherit; }
   background: linear-gradient(135deg, #1a4d8f, #3d8bfd);
 }
 .primary:disabled { opacity: 0.55; cursor: wait; }
+.ghost.scan-world {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.85rem;
+  cursor: pointer;
+  font-weight: 600;
+  align-self: end;
+  white-space: nowrap;
+  color: var(--muted);
+}
+.ghost.scan-world:hover {
+  border-color: var(--accent);
+  color: var(--text);
+  background: rgba(61, 139, 253, 0.08);
+}
+.ghost.scan-world:disabled { opacity: 0.55; cursor: wait; }
 .ob-item .sym-tag {
   display: inline-block; font-size: 0.65rem; font-weight: 700;
   padding: 0.1rem 0.35rem; border-radius: 4px; margin-right: 0.35rem;
