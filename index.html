@@ -52,6 +52,14 @@
       </div>
       <div class="filters">
         <input id="filterText" type="search" placeholder="Filter list…" />
+        <div class="check-filter-row">
+          <div class="check-filter" role="group" aria-label="Filtre cochés">
+            <button type="button" data-check-filter="all" class="active" title="Afficher tous">Tous</button>
+            <button type="button" data-check-filter="hide" title="Masquer les OBs cochés">Masquer cochés</button>
+            <button type="button" data-check-filter="only" title="Afficher seulement les cochés">Cochés</button>
+          </div>
+          <button type="button" id="btnClearChecked" class="linkish" title="Tout décocher">Tout décocher</button>
+        </div>
       </div>
       <ul id="obList" class="ob-list"></ul>
       <p class="hint">

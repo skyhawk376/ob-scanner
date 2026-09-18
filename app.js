@@ -48,6 +48,7 @@
     // "multi" = Scan monde 5★ list; keep it when clicking a row to open a chart
     listMode: "single",
     multiObs: [],
+    checkFilter: "all", // all | hide | only
   };
 
   // --- DOM ---
@@ -63,6 +64,7 @@
     btnScanWorld: document.getElementById("btnScanWorld"),
     minStars: document.getElementById("minStars"),
     filterText: document.getElementById("filterText"),
+    btnClearChecked: document.getElementById("btnClearChecked"),
     chart: document.getElementById("chart"),
   };
 
@@ -620,11 +622,64 @@
     );
   }
 
+
+  // --- Checked OBs (localStorage) ---
+  const CHECKED_LS_KEY = "ob-scanner-checked-v1";
+
+  function obCheckKey(ob) {
+    const sym = ob.symbol != null ? ob.symbol : state.symbol;
+    const tf = ob.tf != null ? ob.tf : state.tf;
+    return `${sym}|${tf}|${ob.side}|${ob.time}`;
+  }
+
+  function loadCheckedMap() {
+    try {
+      const raw = localStorage.getItem(CHECKED_LS_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function saveCheckedMap(map) {
+    try {
+      localStorage.setItem(CHECKED_LS_KEY, JSON.stringify(map));
+    } catch (e) {
+      /* quota / private mode */
+    }
+  }
+
+  function isObChecked(ob) {
+    const map = loadCheckedMap();
+    return !!map[obCheckKey(ob)];
+  }
+
+  function setObChecked(ob, checked) {
+    const map = loadCheckedMap();
+    const key = obCheckKey(ob);
+    if (checked) map[key] = 1;
+    else delete map[key];
+    saveCheckedMap(map);
+  }
+
+  function clearAllChecked() {
+    try {
+      localStorage.removeItem(CHECKED_LS_KEY);
+    } catch (e) { /* ignore */ }
+  }
+
   function filteredObs() {
     const q = (el.filterText.value || "").trim().toLowerCase();
     let items = state.obs.slice();
     items = items.filter((o) => o.stars >= state.minStars);
     if (!state.showMitigated) items = items.filter((o) => !o.mitigated);
+    if (state.checkFilter === "hide") {
+      items = items.filter((o) => !isObChecked(o));
+    } else if (state.checkFilter === "only") {
+      items = items.filter((o) => isObChecked(o));
+    }
     if (q) {
       items = items.filter(
         (o) =>
@@ -655,30 +710,48 @@
       return;
     }
     items.forEach((ob) => {
+      const checked = isObChecked(ob);
       const li = document.createElement("li");
       li.className =
         "ob-item " +
         (ob.side === "bullish" ? "bull" : "bear") +
         (ob.mitigated ? " mitigated" : "") +
-        (state.selectedId === ob.id ? " active" : "");
+        (state.selectedId === ob.id ? " active" : "") +
+        (checked ? " checked" : "");
       const symLabel = ob.symbol
         ? `<span class="sym-tag">${ob.symbol}</span>`
         : `<span class="sym-tag">${state.symbol}</span>`;
       const tfLabel = `<span class="tf-tag">${ob.tf || state.tf}</span>`;
       li.innerHTML = `
-        <div class="row">
-          <span class="side">${symLabel}${tfLabel}${ob.side === "bullish" ? "BULLISH OB" : "BEARISH OB"}
-            <span class="tag ${ob.mitigated ? "dead" : "live"}">${ob.mitigated ? "mitigated" : "active"}</span>
-          </span>
+        <input type="checkbox" class="ob-check" aria-label="Coché" ${checked ? "checked" : ""} />
+        <div class="ob-body">
+          <div class="row">
+            <span class="side">${symLabel}${tfLabel}${ob.side === "bullish" ? "BULLISH OB" : "BEARISH OB"}
+              <span class="tag ${ob.mitigated ? "dead" : "live"}">${ob.mitigated ? "mitigated" : "active"}</span>
+            </span>
+          </div>
+          <div class="row stars-row">
+            ${starsHtml(ob.stars)}
+            ${flagsHtml(ob.starFlags)}
+          </div>
+          <div class="zone">${fmtPrice(ob.low)} — ${fmtPrice(ob.high)}</div>
+          <div class="sltp">SL ${fmtPrice(ob.sl)} · TP ${fmtPrice(ob.tp)} · 1.5R</div>
+          <div class="meta">OB ${fmtTime(ob.time)} · Disp ${fmtTime(ob.dispTime)}</div>
         </div>
-        <div class="row stars-row">
-          ${starsHtml(ob.stars)}
-          ${flagsHtml(ob.starFlags)}
-        </div>
-        <div class="zone">${fmtPrice(ob.low)} — ${fmtPrice(ob.high)}</div>
-        <div class="sltp">SL ${fmtPrice(ob.sl)} · TP ${fmtPrice(ob.tp)} · 1.5R</div>
-        <div class="meta">OB ${fmtTime(ob.time)} · Disp ${fmtTime(ob.dispTime)}</div>
       `;
+      const cb = li.querySelector(".ob-check");
+      cb.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+      });
+      cb.addEventListener("change", (ev) => {
+        ev.stopPropagation();
+        setObChecked(ob, cb.checked);
+        if (state.checkFilter === "hide" || state.checkFilter === "only") {
+          renderList();
+        } else {
+          li.classList.toggle("checked", cb.checked);
+        }
+      });
       li.addEventListener("click", () => {
         focusObFromList(ob);
       });
@@ -987,6 +1060,20 @@
       });
     }
     el.filterText.addEventListener("input", () => renderList());
+    document.querySelectorAll(".check-filter button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".check-filter button").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        state.checkFilter = btn.getAttribute("data-check-filter") || "all";
+        renderList();
+      });
+    });
+    if (el.btnClearChecked) {
+      el.btnClearChecked.addEventListener("click", () => {
+        clearAllChecked();
+        renderList();
+      });
+    }
   }
 
   // Expose for selftest / console

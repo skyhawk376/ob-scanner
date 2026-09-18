@@ -171,3 +171,52 @@ button, select, input { font: inherit; color: inherit; }
   padding: 0.75rem 1rem; border-radius: 8px; font-size: 0.85rem;
 }
 .hidden { display: none !important; }
+
+
+.filters { display: flex; flex-direction: column; gap: 0.4rem; }
+.check-filter-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap;
+}
+.check-filter {
+  display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
+}
+.check-filter button {
+  background: transparent; border: 0; padding: 0.28rem 0.45rem; cursor: pointer;
+  color: var(--muted); font-size: 0.68rem; white-space: nowrap;
+}
+.check-filter button.active { background: var(--accent); color: #fff; }
+.check-filter button:hover:not(.active) { color: var(--text); background: rgba(61,139,253,0.08); }
+.linkish {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  color: var(--muted); font-size: 0.68rem; text-decoration: underline; text-underline-offset: 2px;
+}
+.linkish:hover { color: var(--text); }
+.ob-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.45rem 0.55rem;
+  align-items: start;
+}
+.ob-item .ob-check {
+  margin-top: 0.15rem;
+  width: 1rem; height: 1rem;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.ob-item .ob-body { min-width: 0; }
+.ob-item.checked {
+  opacity: 0.55;
+}
+.ob-item.checked .ob-body {
+  text-decoration: line-through;
+  text-decoration-color: rgba(139, 155, 180, 0.55);
+}
+.ob-item.checked .side,
+.ob-item.checked .zone,
+.ob-item.checked .sltp,
+.ob-item.checked .meta,
+.ob-item.checked .stars {
+  text-decoration: line-through;
+  text-decoration-color: rgba(139, 155, 180, 0.55);
+}
