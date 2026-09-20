@@ -80,15 +80,15 @@ Aligned with Kasper/ICT + Oscar paper style. **Recommendations only** — not au
 
 | Field | Rule |
 |-------|------|
-| **Entry** | OB mid (50% / mean threshold) |
-| **SL** | Beyond OB extreme: bull → just below OB low; bear → just above OB high. Buffer = `max((high-low)*0.05, mintick*2)` (Pine) or `max((high-low)*0.05, price*1e-5)` (JS) |
-| **TP** | Entry + **1.5R** in trade direction, where `R = |entry - SL|` |
-| **RR** | Fixed **1.5** for TP1 |
+| **Entry** | Bull = OB **high**; bear = OB **low** (Oscar validated) |
+| **SL** | Beyond OB extreme: bull → low − buffer; bear → high + buffer. Buffer JS = `max((high-low)*0.075, abs(entry)*1.5e-5)`; Pine = `max((high-low)*0.05, mintick*2)` |
+| **TP** | Entry ± **2R** in trade direction, where `R = |entry - SL|` |
+| **RR** | Fixed **1:2** (2R) for TP1 |
 
-- Bull: `TP = entry + 1.5 * (entry - SL)`
-- Bear: `TP = entry - 1.5 * (SL - entry)`
+- Bull: entry = high; `SL = low - buffer`; `R = entry - SL`; `TP = entry + 2 * R`
+- Bear: entry = low; `SL = high + buffer`; `R = SL - entry`; `TP = entry - 2 * R`
 
-Surfaces: local list row (`SL … · TP … · 1.5R`), chart Entry/SL/TP lines when an OB is selected, Pine labels + optional lines (`showSlTp`), and alert messages (`SL=… TP=…`).
+Surfaces: local list row (`SL … · TP … · 2R`), chart Entry/SL/TP lines when an OB is selected, Pine labels + optional lines (`showSlTp`), and alert messages (`SL=… TP=…`).
 
 ## API (local)
 

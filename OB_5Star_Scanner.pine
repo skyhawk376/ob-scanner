@@ -65,18 +65,18 @@ f_flagsText(ObZone o) =>
 f_starsText(int n) =>
     str.tostring(n) + "*"
 
-// Entry = mid; SL beyond OB extreme + buffer; TP = 1.5R
+// Bull: entry=hi, SL=lo-buf, TP=entry+2R; Bear: entry=lo, SL=hi+buf, TP=entry-2R
 f_slTp(float hi, float lo, int side) =>
-    float entry = (hi + lo) / 2.0
+    float entry = side == 1 ? hi : lo
     float rng = math.max(0.0, hi - lo)
     float buf = math.max(rng * 0.05, syminfo.mintick * 2.0)
     float sl = side == 1 ? lo - buf : hi + buf
     float r = math.abs(entry - sl)
-    float tp = side == 1 ? entry + 1.5 * r : entry - 1.5 * r
+    float tp = side == 1 ? entry + 2.0 * r : entry - 2.0 * r
     [entry, sl, tp, r]
 
 f_slTpText(ObZone o) =>
-    "E=" + str.tostring(o.entry, format.mintick) + " SL=" + str.tostring(o.sl, format.mintick) + " TP=" + str.tostring(o.tp, format.mintick) + " RR=1.5"
+    "E=" + str.tostring(o.entry, format.mintick) + " SL=" + str.tostring(o.sl, format.mintick) + " TP=" + str.tostring(o.tp, format.mintick) + " RR=2"
 
 f_deleteVisuals(ObZone o) =>
     if not na(o.bx)

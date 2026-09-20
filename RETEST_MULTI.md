@@ -46,7 +46,7 @@ Fixes (chacun activable) : `5`, `15`, `30`, `60`, `240`, `D`.
 - **Retest only** : premier toucher `low<=hi` et `high>=lo` après la barre de displacement, tant que fresh / non mitigé.
 - Mitigation : close au-delà du mid 50 % (comme le scanner mono-symbole).
 - **Aucune** alerte à la création d’un OB.
-- Message d’alerte append `SL=… TP=…` (entry = mid, SL beyond zone + buffer, TP = 1.5R).
+- Message d’alerte append `SL=… TP=…` (bull entry=high / bear entry=low, SL beyond zone + buffer, TP = 2R).
 
 ## 6. Notes / limites
 

@@ -272,7 +272,7 @@
           lineWidth: 1,
           lineStyle: LightweightCharts.LineStyle.Dotted,
           axisLabelVisible: true,
-          title: "TP 1.5R",
+          title: "TP 2R",
         })
       );
     }
@@ -413,23 +413,24 @@
 
 
   /**
-   * Recommended SL/TP (scan-only, Kasper/ICT + Oscar paper style).
-   * Entry = distal edge (bull=low / bear=high). SL beyond that extreme + wider buffer (7.5%).
-   * TP = entry ± 1.5R where R = |entry - SL|.
+   * Recommended SL/TP (scan-only, Oscar validated rules).
+   * Bullish: entry = OB high; SL = low - buffer; R = entry - SL; TP = entry + 2R.
+   * Bearish: entry = OB low;  SL = high + buffer; R = SL - entry; TP = entry - 2R.
+   * Buffer = max(range * 0.075, abs(entry) * 1.5e-5).
    */
   function computeSlTp(high, low, side) {
-    const entry = side === "bullish" ? low : high;
+    const entry = side === "bullish" ? high : low;
     const range = Math.max(0, high - low);
     const buffer = Math.max(range * 0.075, Math.abs(entry) * 1.5e-5);
     let sl, tp, r;
     if (side === "bullish") {
       sl = low - buffer;
       r = entry - sl;
-      tp = entry + 1.5 * r;
+      tp = entry + 2 * r;
     } else {
       sl = high + buffer;
       r = sl - entry;
-      tp = entry - 1.5 * r;
+      tp = entry - 2 * r;
     }
     return { entry, sl, tp, r };
   }
@@ -874,7 +875,7 @@
             ${flagsHtml(ob.starFlags)}
           </div>
           <div class="zone">${fmtPrice(ob.low)} — ${fmtPrice(ob.high)}</div>
-          <div class="sltp">SL ${fmtPrice(ob.sl)} · TP ${fmtPrice(ob.tp)} · 1.5R</div>
+          <div class="sltp">SL ${fmtPrice(ob.sl)} · TP ${fmtPrice(ob.tp)} · 2R</div>
           <div class="meta">OB ${fmtTime(ob.time)} · Disp ${fmtTime(ob.dispTime)}</div>
         </div>
       `;
