@@ -220,3 +220,34 @@ button, select, input { font: inherit; color: inherit; }
   text-decoration: line-through;
   text-decoration-color: rgba(139, 155, 180, 0.55);
 }
+
+.sync-row {
+  display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;
+  margin-top: 0.15rem;
+}
+.sync-label {
+  font-size: 0.68rem; color: var(--muted); margin: 0;
+}
+.sync-row input#syncCodeInput {
+  flex: 1 1 7.5rem; min-width: 6.5rem; max-width: 11rem;
+  background: #0f1520; border: 1px solid var(--border); color: var(--text);
+  border-radius: 5px; padding: 0.22rem 0.4rem; font-size: 0.68rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.02em;
+}
+.sync-row input#syncCodeInput:focus {
+  outline: none; border-color: var(--accent);
+}
+.sync-btn {
+  background: #1a2333; border: 1px solid var(--border); color: var(--text);
+  border-radius: 5px; padding: 0.22rem 0.45rem; font-size: 0.65rem;
+  cursor: pointer; white-space: nowrap;
+}
+.sync-btn:hover { border-color: var(--accent); color: #fff; }
+.sync-btn:disabled { opacity: 0.5; cursor: default; }
+.sync-status {
+  font-size: 0.62rem; color: var(--muted); white-space: nowrap;
+}
+.sync-status.ok { color: var(--bull); }
+.sync-status.err { color: #ff8e8e; }
+.sync-status.busy { color: #9ec1ff; }

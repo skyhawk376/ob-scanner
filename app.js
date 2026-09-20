@@ -65,6 +65,10 @@
     minStars: document.getElementById("minStars"),
     filterText: document.getElementById("filterText"),
     btnClearChecked: document.getElementById("btnClearChecked"),
+    syncCodeInput: document.getElementById("syncCodeInput"),
+    btnSyncGenerate: document.getElementById("btnSyncGenerate"),
+    btnSyncLink: document.getElementById("btnSyncLink"),
+    syncStatus: document.getElementById("syncStatus"),
     chart: document.getElementById("chart"),
   };
 
@@ -623,8 +627,15 @@
   }
 
 
-  // --- Checked OBs (localStorage) ---
+  // --- Checked OBs (localStorage + optional cloud sync) ---
   const CHECKED_LS_KEY = "ob-scanner-checked-v1";
+  const SYNC_CODE_LS_KEY = "ob-scanner-sync-code-v1";
+  const SYNC_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const SYNC_CODE_RE = /^OB-[A-Z2-9]{8,12}$/;
+  const SYNC_DEBOUNCE_MS = 400;
+
+  let syncPushTimer = null;
+  let syncBusy = false;
 
   function obCheckKey(ob) {
     const sym = ob.symbol != null ? ob.symbol : state.symbol;
@@ -651,6 +662,132 @@
     }
   }
 
+  function normalizeSyncCode(code) {
+    if (!code || typeof code !== "string") return null;
+    const c = code.trim().toUpperCase();
+    return SYNC_CODE_RE.test(c) ? c : null;
+  }
+
+  function getStoredSyncCode() {
+    try {
+      return normalizeSyncCode(localStorage.getItem(SYNC_CODE_LS_KEY) || "");
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function setStoredSyncCode(code) {
+    const n = normalizeSyncCode(code);
+    try {
+      if (n) localStorage.setItem(SYNC_CODE_LS_KEY, n);
+      else localStorage.removeItem(SYNC_CODE_LS_KEY);
+    } catch (e) { /* ignore */ }
+    return n;
+  }
+
+  function generateSyncCode() {
+    let body = "";
+    const len = 10;
+    if (window.crypto && crypto.getRandomValues) {
+      const buf = new Uint8Array(len);
+      crypto.getRandomValues(buf);
+      for (let i = 0; i < len; i++) body += SYNC_ALPHABET[buf[i] % SYNC_ALPHABET.length];
+    } else {
+      for (let i = 0; i < len; i++) {
+        body += SYNC_ALPHABET[Math.floor(Math.random() * SYNC_ALPHABET.length)];
+      }
+    }
+    return "OB-" + body;
+  }
+
+  function setSyncStatus(msg, kind) {
+    if (!el.syncStatus) return;
+    el.syncStatus.textContent = msg || "";
+    el.syncStatus.className = "sync-status" + (kind ? " " + kind : "");
+  }
+
+
+  async function fetchCloudChecks(code) {
+    const n = normalizeSyncCode(code);
+    if (!n) throw new Error("Code invalide");
+    const res = await fetch("/api/checks?code=" + encodeURIComponent(n));
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      throw new Error((data && data.error) || "Échec chargement sync");
+    }
+    return data;
+  }
+
+  async function pushCloudChecks(code, map) {
+    const n = normalizeSyncCode(code);
+    if (!n) return;
+    const res = await fetch("/api/checks", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: n, checks: map || {} }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      throw new Error((data && data.error) || "Échec envoi sync");
+    }
+    return data;
+  }
+
+  function scheduleCloudPush() {
+    const code = getStoredSyncCode();
+    if (!code) return;
+    if (syncPushTimer) clearTimeout(syncPushTimer);
+    syncPushTimer = setTimeout(() => {
+      syncPushTimer = null;
+      const map = loadCheckedMap();
+      setSyncStatus("Sync…", "busy");
+      pushCloudChecks(code, map)
+        .then(() => setSyncStatus("Sync OK", "ok"))
+        .catch((err) => setSyncStatus("Sync err", "err"));
+    }, SYNC_DEBOUNCE_MS);
+  }
+
+  async function linkAndLoadSyncCode(rawCode, opts) {
+    const options = opts || {};
+    const n = normalizeSyncCode(rawCode);
+    if (!n) {
+      setSyncStatus("Code invalide", "err");
+      return false;
+    }
+    if (syncBusy) return false;
+    syncBusy = true;
+    setSyncStatus("Chargement…", "busy");
+    try {
+      const data = await fetchCloudChecks(n);
+      setStoredSyncCode(n);
+      if (el.syncCodeInput) el.syncCodeInput.value = n;
+      const cloud = (data && data.checks) || {};
+      const cleanCloud = {};
+      Object.keys(cloud).forEach((k) => {
+        if (cloud[k]) cleanCloud[k] = 1;
+      });
+      const local = loadCheckedMap();
+      const cloudEmpty = Object.keys(cleanCloud).length === 0;
+      const localHas = Object.keys(local).some((k) => local[k]);
+      if (cloudEmpty && localHas) {
+        // First link / empty cloud: seed cloud from local (don't wipe device)
+        saveCheckedMap(local);
+        await pushCloudChecks(n, local);
+      } else {
+        // Cloud wins on load (toggle + reload stays consistent across devices)
+        saveCheckedMap(cleanCloud);
+      }
+      setSyncStatus("Sync OK", "ok");
+      if (!options.silent) renderList();
+      return true;
+    } catch (err) {
+      setSyncStatus("Sync err", "err");
+      return false;
+    } finally {
+      syncBusy = false;
+    }
+  }
+
   function isObChecked(ob) {
     const map = loadCheckedMap();
     return !!map[obCheckKey(ob)];
@@ -662,12 +799,14 @@
     if (checked) map[key] = 1;
     else delete map[key];
     saveCheckedMap(map);
+    scheduleCloudPush();
   }
 
   function clearAllChecked() {
     try {
       localStorage.removeItem(CHECKED_LS_KEY);
     } catch (e) { /* ignore */ }
+    scheduleCloudPush();
   }
 
   function filteredObs() {
@@ -1074,6 +1213,37 @@
         renderList();
       });
     }
+    if (el.syncCodeInput) {
+      const existing = getStoredSyncCode();
+      if (existing) el.syncCodeInput.value = existing;
+      el.syncCodeInput.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          if (el.btnSyncLink) el.btnSyncLink.click();
+        }
+      });
+    }
+    if (el.btnSyncGenerate) {
+      el.btnSyncGenerate.addEventListener("click", async () => {
+        const code = generateSyncCode();
+        setStoredSyncCode(code);
+        if (el.syncCodeInput) el.syncCodeInput.value = code;
+        setSyncStatus("Nouveau code…", "busy");
+        try {
+          // Seed cloud with current local map so Générer also starts syncing
+          await pushCloudChecks(code, loadCheckedMap());
+          setSyncStatus("Sync OK", "ok");
+        } catch (err) {
+          setSyncStatus("Sync err", "err");
+        }
+      });
+    }
+    if (el.btnSyncLink) {
+      el.btnSyncLink.addEventListener("click", () => {
+        const raw = el.syncCodeInput ? el.syncCodeInput.value : "";
+        linkAndLoadSyncCode(raw);
+      });
+    }
   }
 
   // Expose for selftest / console
@@ -1082,5 +1252,12 @@
   // boot
   wireUi();
   initChart();
-  loadData();
+  // If a sync code is already stored, pull cloud (union) then load candles
+  (async function boot() {
+    const code = getStoredSyncCode();
+    if (code) {
+      await linkAndLoadSyncCode(code, { silent: true });
+    }
+    loadData();
+  })();
 })();

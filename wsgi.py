@@ -78,7 +78,7 @@ def application(environ, start_response):
             "204 No Content",
             [
                 ("Access-Control-Allow-Origin", "*"),
-                ("Access-Control-Allow-Methods", "GET, OPTIONS"),
+                ("Access-Control-Allow-Methods", "GET, PUT, OPTIONS"),
                 ("Access-Control-Allow-Headers", "Content-Type"),
                 ("Content-Length", "0"),
             ],
@@ -117,6 +117,47 @@ def application(environ, start_response):
                 "502 Bad Gateway",
                 {"error": str(e), "symbol": symbol, "tf": tf},
             )
+
+    if path == "/api/checks":
+        if method == "GET":
+            params = urllib.parse.parse_qs(qs)
+            code = server.normalize_sync_code((params.get("code") or [""])[0])
+            if not code:
+                return _json_response(
+                    start_response, "400 Bad Request", {"ok": False, "error": "invalid or missing code"}
+                )
+            return _json_response(start_response, "200 OK", server.load_checks_for_code(code))
+        if method == "PUT":
+            try:
+                length = int(environ.get("CONTENT_LENGTH") or 0)
+            except ValueError:
+                length = 0
+            if length <= 0:
+                return _json_response(
+                    start_response, "400 Bad Request", {"ok": False, "error": "empty body"}
+                )
+            if length > server.MAX_CHECKS_BODY:
+                return _json_response(
+                    start_response, "413 Payload Too Large", {"ok": False, "error": "payload too large"}
+                )
+            raw = environ["wsgi.input"].read(length)
+            try:
+                code, checks = server.parse_checks_put_body(raw)
+                result = server.save_checks_for_code(code, checks)
+                return _json_response(start_response, "200 OK", result)
+            except ValueError as e:
+                return _json_response(
+                    start_response, "400 Bad Request", {"ok": False, "error": str(e)}
+                )
+            except Exception as e:
+                return _json_response(
+                    start_response,
+                    "500 Internal Server Error",
+                    {"ok": False, "error": str(e), "trace": traceback.format_exc()},
+                )
+        return _json_response(
+            start_response, "405 Method Not Allowed", {"ok": False, "error": "use GET or PUT"}
+        )
 
     if path.startswith("/api/"):
         return _json_response(start_response, "404 Not Found", {"error": "unknown api path", "path": path})

@@ -11,7 +11,9 @@ Usage:
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -21,9 +23,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 CACHE_DIR = ROOT / "cache"
+CHECKS_DIR = ROOT / "data" / "checks"
 PORT = 8765
 CACHE_TTL = 60  # seconds
 CACHE: dict[str, tuple[float, bytes, str]] = {}
+
+# Personal sync codes for checked OBs (cloud). Alphabet omits 0/O/1/I.
+SYNC_CODE_RE = re.compile(r"^OB-[A-Z2-9]{8,12}$")
+SYNC_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+MAX_CHECKS_BODY = 200 * 1024  # bytes
 
 UA = "Mozilla/5.0 (compatible; OBScanner/1.0; +local)"
 
@@ -246,6 +254,76 @@ def fetch_candles(symbol: str, tf: str) -> dict:
         raise
 
 
+
+def normalize_sync_code(code: str | None) -> str | None:
+    """Normalize sync code to upper; return None if invalid."""
+    if not code or not isinstance(code, str):
+        return None
+    c = code.strip().upper()
+    if not SYNC_CODE_RE.match(c):
+        return None
+    return c
+
+
+def checks_file_for_code(code: str) -> Path:
+    digest = hashlib.sha256(code.encode("utf-8")).hexdigest()
+    return CHECKS_DIR / f"{digest}.json"
+
+
+def ensure_checks_dir() -> None:
+    CHECKS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def load_checks_for_code(code: str) -> dict:
+    """Return {ok, code, checks, updated_at}. Missing file → empty checks."""
+    path = checks_file_for_code(code)
+    if not path.is_file():
+        return {"ok": True, "code": code, "checks": {}, "updated_at": None}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"ok": True, "code": code, "checks": {}, "updated_at": None}
+    checks = data.get("checks") if isinstance(data, dict) else {}
+    if not isinstance(checks, dict):
+        checks = {}
+    # Only keep truthy checked keys as 1
+    clean = {str(k): 1 for k, v in checks.items() if v}
+    updated_at = data.get("updated_at") if isinstance(data, dict) else None
+    return {"ok": True, "code": code, "checks": clean, "updated_at": updated_at}
+
+
+def save_checks_for_code(code: str, checks: dict) -> dict:
+    """Persist checks map; return {ok, code, checks, updated_at}."""
+    if not isinstance(checks, dict):
+        raise ValueError("checks must be an object")
+    clean = {str(k): 1 for k, v in checks.items() if v}
+    ensure_checks_dir()
+    updated_at = int(time.time())
+    path = checks_file_for_code(code)
+    payload = {"checks": clean, "updated_at": updated_at}
+    path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+    return {"ok": True, "code": code, "checks": clean, "updated_at": updated_at}
+
+
+def parse_checks_put_body(raw: bytes) -> tuple[str, dict]:
+    """Validate PUT body; return (normalized_code, checks). Raises ValueError."""
+    if len(raw) > MAX_CHECKS_BODY:
+        raise ValueError("payload too large")
+    try:
+        obj = json.loads(raw.decode("utf-8"))
+    except Exception as e:
+        raise ValueError(f"invalid JSON: {e}") from e
+    if not isinstance(obj, dict):
+        raise ValueError("body must be a JSON object")
+    code = normalize_sync_code(obj.get("code"))
+    if not code:
+        raise ValueError("invalid or missing code (expected OB- + 8–12 chars A-Z2-9)")
+    checks = obj.get("checks")
+    if not isinstance(checks, dict):
+        raise ValueError("checks must be an object")
+    return code, checks
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
@@ -257,7 +335,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_OPTIONS(self):
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, PUT, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
 
@@ -283,7 +361,36 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(200, data)
             except Exception as e:
                 return self._json(502, {"error": str(e), "symbol": symbol, "tf": tf})
+        if parsed.path == "/api/checks":
+            qs = urllib.parse.parse_qs(parsed.query)
+            code = normalize_sync_code((qs.get("code") or [""])[0])
+            if not code:
+                return self._json(400, {"ok": False, "error": "invalid or missing code"})
+            return self._json(200, load_checks_for_code(code))
         return super().do_GET()
+
+    def do_PUT(self):
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path != "/api/checks":
+            self.send_error(404, "Not Found")
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = 0
+        if length <= 0:
+            return self._json(400, {"ok": False, "error": "empty body"})
+        if length > MAX_CHECKS_BODY:
+            return self._json(413, {"ok": False, "error": "payload too large"})
+        raw = self.rfile.read(length)
+        try:
+            code, checks = parse_checks_put_body(raw)
+            result = save_checks_for_code(code, checks)
+            return self._json(200, result)
+        except ValueError as e:
+            return self._json(400, {"ok": False, "error": str(e)})
+        except Exception as e:
+            return self._json(500, {"ok": False, "error": str(e)})
 
     def _json(self, code: int, obj: dict):
         body = json.dumps(obj).encode()
@@ -312,7 +419,7 @@ def main():
     httpd = ThreadingHTTPServer((host, port), Handler)
     print(f"OB Scanner → http://{host}:{port}/")
     print(f"Serving {ROOT}")
-    print("API: GET /api/candles?symbol=BTCUSD&tf=M15")
+    print("API: GET /api/candles?symbol=BTCUSD&tf=M15 · GET/PUT /api/checks")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

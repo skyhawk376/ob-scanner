@@ -136,3 +136,14 @@ Companion Pine v6 overlay: [`OB_5Star_Scanner.pine`](OB_5Star_Scanner.pine) — 
   TRADINGVIEW.md
   cache/
 ```
+
+
+## Sync des cochés (multi-appareils)
+
+Dans la sidebar, sous les filtres de cochés : champ **Sync**, boutons **Générer** et **Lier / Charger**.
+
+1. Sur l’appareil A : **Générer** → un code `OB-……` est créé et stocké localement + cloud.
+2. Sur l’appareil B : coller le même code → **Lier / Charger** → union des clés cochées (local ∪ cloud).
+3. Chaque coche / « Tout décocher » met à jour `localStorage` et pousse vers le cloud (~400 ms debounce).
+
+Sans code, le comportement reste 100 % local (`ob-scanner-checked-v1`). Voir aussi `DEPLOY.md`.

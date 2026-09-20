@@ -44,3 +44,21 @@ Free tier serves via **WSGI**, not `python server.py`.
 1. `git pull` in the project folder (e.g. `/home/<user>/ob-scanner`).
 2. Open the **Web** tab → **Reload** the web app so WSGI and static files (`server.py`, `app.js`, `index.html`) pick up the changes.
 3. Hard-refresh the browser (cache-bust) and smoke `/api/health` — `symbols` should list the expanded watchlist.
+
+
+## Sync cochés (code perso)
+
+Les cases à cocher des OBs restent en `localStorage` et peuvent aussi se synchroniser via un **code perso** (`OB-` + 8–12 caractères A–Z / 2–9, sans 0/O/1/I).
+
+- UI sidebar : **Générer** / **Lier / Charger**
+- API : `GET /api/checks?code=OB-…` · `PUT /api/checks` body `{ "code", "checks" }`
+- Stockage serveur : `data/checks/<sha256(code)>.json` (créé au premier PUT). Sur PythonAnywhere, le dossier doit être **writable** sous le home du projet.
+- Ne pas logger le code brut ; le nom de fichier n’expose pas le code en clair.
+
+```bash
+# smoke local
+curl -s "http://127.0.0.1:8765/api/checks?code=OB-ABCDEFGH22"
+curl -s -X PUT http://127.0.0.1:8765/api/checks \
+  -H "Content-Type: application/json" \
+  -d '{"code":"OB-ABCDEFGH22","checks":{"BTCUSD|M15|bullish|123":1}}'
+```

@@ -60,6 +60,14 @@
           </div>
           <button type="button" id="btnClearChecked" class="linkish" title="Tout décocher">Tout décocher</button>
         </div>
+        <div class="sync-row" title="Code perso pour synchroniser les cochés entre appareils">
+          <label class="sync-label" for="syncCodeInput">Sync</label>
+          <input id="syncCodeInput" type="text" spellcheck="false" autocomplete="off"
+                 placeholder="OB-XXXXXXXX" maxlength="16" aria-label="Code de sync" />
+          <button type="button" id="btnSyncGenerate" class="sync-btn" title="Créer un nouveau code">Générer</button>
+          <button type="button" id="btnSyncLink" class="sync-btn" title="Lier ce code et charger le cloud">Lier / Charger</button>
+          <span id="syncStatus" class="sync-status" aria-live="polite"></span>
+        </div>
       </div>
       <ul id="obList" class="ob-list"></ul>
       <p class="hint">
