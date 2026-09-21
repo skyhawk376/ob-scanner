@@ -19,7 +19,7 @@ You can also serve static files with `npx serve` / `python -m http.server`, but 
 
 - **Left:** detected OBs with ★★★★☆ + flag badges (FVG / BOS / SWP / FR / PD). Click one → zone + price lines on the chart.
 - **Right:** TradingView Lightweight Charts candlesticks. Dim overlays show all unmitigated OBs meeting **Min ★**; click focuses one at full opacity.
-- **Controls:** symbol, M5 / M15 / H1, **Min ★** (default **4+**), show mitigated, Refresh.
+- **Controls:** symbol, M5 / M15 / H1, **Min ★** (default **5**), show mitigated, Refresh.
 
 ### Watchlist
 
@@ -69,7 +69,7 @@ Each criterion awards **1 point** (max **5**). Stored as `stars` + `starFlags: {
 | 4 | **FR** | **Fresh** — OB still unmitigated at detection time. |
 | 5 | **PD** | **Premium / Discount** — bullish OB mid in the **lower** half of the local swing (discount); bearish mid in the **upper** half (premium). Swing ≈ min low of last 50 bars before disp → max high from OB through disp+5. |
 
-**Default UI filter: Min ★ = 4** (show only high-confluence OBs). Lower the control to 0–5 to see noisier candidates.
+**Default UI filter: Min ★ = 5** (show only high-confluence OBs). Lower the control to 0–5 to see noisier candidates.
 
 Inspired by Kasper / ICT confluence ideas for **scanning only** — not a trading system and not financial advice.
 
@@ -77,6 +77,7 @@ Inspired by Kasper / ICT confluence ideas for **scanning only** — not a tradin
 ## Recommended SL / TP (scan-only)
 
 Aligned with Kasper/ICT + Oscar paper style. **Recommendations only** — not auto-orders.
+**This is the live panel rule** (commit `03fe84b`): far-edge entry (bull high / bear low) + TP **2R** — not a proposal.
 
 | Field | Rule |
 |-------|------|
