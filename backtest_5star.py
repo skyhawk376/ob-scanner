@@ -13,13 +13,16 @@ Entry modes (--entry):
 
 Entry price (--entry-side):
   near — bull=OB low, bear=OB high (CLI research default)
+  mid  — bull/bear entry = OB mid = (high+low)/2 (research)
   far  — bull=OB high, bear=OB low (matches live panel app.js computeSlTp since 03fe84b)
 
 TP reward (--rr): multiple of R (CLI research default 1.5; live panel uses 2.0)
 
 Ambiguous bar (--ambiguous) when both SL and TP touch the same candle:
-  sl_first  — count as SL loss (default, conservative)
+  sl_first / count_as_loss — count as SL loss (default, conservative; aliases)
   skip      — exclude like timeouts (ambiguous bucket; not in WR / R)
+
+Optional --tfs M5,M15,H1 filters the TF universe (default: all three).
 
 CLI defaults (--entry-side near, --rr 1.5) are for research experiments.
 Live panel = far + 2.0R (commit 03fe84b). This script does not change production app.js.
@@ -165,13 +168,17 @@ def compute_sl_tp(
 
     entry_side:
       near — bull entry=low, bear entry=high (CLI research default)
+      mid  — bull/bear entry = (high+low)/2
       far  — bull entry=high, bear entry=low (live panel since 03fe84b)
     Buffer style unchanged: max(range*0.075, |entry|*1.5e-5) beyond OB extreme.
+    SL still beyond the opposite OB extreme (bull: low-buffer; bear: high+buffer).
     TP = entry ± rr * R (live panel uses 2.0 / 1:2; pass --rr 2 --entry-side far).
     Production app.js is NOT modified by this function.
     """
     if entry_side == "near":
         entry = low if side == "bullish" else high
+    elif entry_side == "mid":
+        entry = (high + low) / 2
     elif entry_side == "far":
         entry = high if side == "bullish" else low
     else:
@@ -317,10 +324,13 @@ def find_5star_obs_at_detection(
 # ---------------------------------------------------------------------------
 
 def _both_hit_result(ob, exit_idx, entry_idx, ambiguous_mode: str) -> dict:
-    """Handle candle that touches both SL and TP."""
+    """Handle candle that touches both SL and TP.
+
+    count_as_loss is an alias of sl_first (both count the bar as a -1R loss).
+    """
     if ambiguous_mode == "skip":
         return _result(ob, "ambiguous", 0.0, exit_idx, entry_idx, "same_bar_both_ambiguous")
-    if ambiguous_mode == "sl_first":
+    if ambiguous_mode in ("sl_first", "count_as_loss"):
         return _result(ob, "loss", -1.0, exit_idx, entry_idx, "same_bar_both_sl_first")
     raise ValueError(f"unknown ambiguous_mode: {ambiguous_mode!r}")
 
@@ -554,7 +564,7 @@ def build_markdown(payload: dict) -> str:
         rule_blurb = (
             f"Entry-side **`{entry_side}`** + TP **{rr}R** matches **current live** "
             f"`app.js` `computeSlTp` (since commit `03fe84b`; "
-            f"near=bull low/bear high; far=bull high/bear low); "
+            f"near=bull low/bear high; mid=(h+l)/2; far=bull high/bear low); "
             f"buffer 7.5% of range beyond OB extreme. "
             f"This report remains a historical backtest of that rule. "
         )
@@ -573,7 +583,7 @@ def build_markdown(payload: dict) -> str:
             f"**Research variant** (CLI defaults; live panel is far + 2.0R "
             f"since `03fe84b`): "
             f"entry-side **`{entry_side}`** "
-            f"(near=bull low/bear high; far=bull high/bear low), "
+            f"(near=bull low/bear high; mid=(h+l)/2; far=bull high/bear low), "
             f"buffer 7.5% of range beyond OB extreme, TP **{rr}R**. "
         )
         note_blurb = (
@@ -590,14 +600,15 @@ def build_markdown(payload: dict) -> str:
         f"",
         f"Generated: **{now}** (Europe/Paris)",
         f"",
-        f"Universe: all `{len(SYMBOLS)}` symbols × TF M5, M15, H1. "
+        f"Universe: all `{len(SYMBOLS)}` symbols × TF "
+        f"{', '.join(payload.get('tfs') or payload.get('rules', {}).get('tfs') or TFS)}. "
         f"Only OBs with **stars == 5 at detection time** (fresh/unmitigated). "
         + rule_blurb
         + f"Wick-touch entry. "
         f"Entry mode: **`{payload.get('entry_mode', 'same_bar')}`** "
         f"(same_bar = earliest fill on detection bar i; next_bar = earliest i+1). "
         f"Ambiguous (both SL+TP same candle): **`{payload.get('ambiguous_mode', 'sl_first')}`** "
-        f"(sl_first = count as SL loss; skip = exclude from WR/R like timeouts).",
+        f"(sl_first/count_as_loss = count as SL loss; skip = exclude from WR/R like timeouts).",
         f"",
         note_blurb,
         f"",
@@ -621,7 +632,8 @@ def build_markdown(payload: dict) -> str:
         f"| TF | Closed | Winrate | Avg R | Sum R | PF | Timeouts | Ambiguous |",
         f"|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
-    for tf in TFS:
+    report_tfs = payload.get("tfs") or payload.get("rules", {}).get("tfs") or TFS
+    for tf in report_tfs:
         s = payload["by_tf"].get(tf) or agg_stats([])
         lines.append(
             f"| {tf} | {s['closed']} | {s['winrate_pct']:.2f}% | "
@@ -702,7 +714,8 @@ def build_markdown(payload: dict) -> str:
         f"**excluded** from winrate / avg R / sum R / profit factor.",
         f"- **Entry-side (`{entry_side}`):** "
         f"`far` = **live** (bull=OB high, bear=OB low, since 03fe84b); "
-        f"`near` = CLI research default (bull=OB low, bear=OB high). "
+        f"`near` = CLI research default (bull=OB low, bear=OB high); "
+        f"`mid` = OB mid (high+low)/2. "
         f"SL still beyond the opposite OB extreme with the same buffer formula.",
         f"- **RR (`{rr}`):** TP = entry ± RR×R; **live** app uses 2R (since 03fe84b); "
         f"CLI research default remains 1.5R.",
@@ -723,11 +736,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     p.add_argument(
         "--ambiguous",
-        choices=("sl_first", "skip"),
+        choices=("sl_first", "count_as_loss", "skip"),
         default="sl_first",
         help="When both SL and TP touch the same candle (fill bar or later): "
-        "sl_first=count as SL loss (default); skip=exclude as ambiguous "
-        "(like timeouts, not in WR/R)",
+        "sl_first / count_as_loss=count as SL loss (aliases, default); "
+        "skip=exclude as ambiguous (like timeouts, not in WR/R)",
     )
     p.add_argument(
         "--rr",
@@ -738,11 +751,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     p.add_argument(
         "--entry-side",
-        choices=("near", "far"),
+        choices=("near", "mid", "far"),
         default="near",
         dest="entry_side",
         help="OB entry edge: near=bull low/bear high (CLI research default); "
-        "far=bull high/bear low (live panel since 03fe84b)",
+        "mid=(high+low)/2; far=bull high/bear low (live panel since 03fe84b). "
+        "SL still beyond opposite extreme with same buffer.",
     )
     p.add_argument(
         "--out-tag",
@@ -755,6 +769,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Only use warm disk candle cache (no live fetch)",
     )
+    p.add_argument(
+        "--tfs",
+        default=None,
+        help="Comma-separated TF filter, e.g. M5,M15,H1 or H1 (default: all TFS)",
+    )
     return p.parse_args(argv)
 
 
@@ -762,10 +781,21 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     entry_mode = args.entry
     ambiguous_mode = args.ambiguous
+    if ambiguous_mode == "count_as_loss":
+        ambiguous_mode = "sl_first"
     rr = float(args.rr)
     entry_side = args.entry_side
     out_tag = args.out_tag
     cache_only = bool(args.cache_only)
+    if args.tfs:
+        run_tfs = [t.strip().upper() for t in args.tfs.split(",") if t.strip()]
+        bad = [t for t in run_tfs if t not in TFS]
+        if bad:
+            raise SystemExit(f"Unknown TF(s) in --tfs: {bad}; allowed: {TFS}")
+        if not run_tfs:
+            raise SystemExit("--tfs resolved to empty list")
+    else:
+        run_tfs = list(TFS)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     (OUT_DIR / "cache").mkdir(parents=True, exist_ok=True)
@@ -781,9 +811,12 @@ def main(argv: list[str] | None = None) -> int:
     coinbase_syms = [s for s, v in SYMBOLS.items() if v[0] == "coinbase"]
     yahoo_syms = [s for s, v in SYMBOLS.items() if v[0] == "yahoo"]
     ordered = coinbase_syms + yahoo_syms
-    pairs = [(s, tf) for s in ordered for tf in TFS]
+    pairs = [(s, tf) for s in ordered for tf in run_tfs]
     total_pairs = len(pairs)
-    print(f"Backtest 5★ OB — {len(symbols)} symbols × {len(TFS)} TFs = {total_pairs} series")
+    print(
+        f"Backtest 5★ OB — {len(symbols)} symbols × {len(run_tfs)} TFs "
+        f"({','.join(run_tfs)}) = {total_pairs} series"
+    )
     print(
         f"Entry mode: {entry_mode} | Ambiguous: {ambiguous_mode} | "
         f"RR: {rr} | Entry-side: {entry_side} | cache_only={cache_only} | "
@@ -838,7 +871,7 @@ def main(argv: list[str] | None = None) -> int:
             by_sym_trades[symbol].append(tr)
 
     totals = agg_stats(all_trades)
-    by_tf = {tf: agg_stats(by_tf_trades.get(tf, [])) for tf in TFS}
+    by_tf = {tf: agg_stats(by_tf_trades.get(tf, [])) for tf in run_tfs}
     by_symbol = {sym: agg_stats(by_sym_trades.get(sym, [])) for sym in sorted(by_sym_trades)}
     # include symbols with zero trades for completeness
     for sym in symbols:
@@ -850,11 +883,16 @@ def main(argv: list[str] | None = None) -> int:
         if ambiguous_mode == "skip"
         else "SL first if both on fill bar"
     )
-    entry_side_desc = (
-        "far OB edge (bull=high, bear=low; live panel since 03fe84b)"
-        if entry_side == "far"
-        else "near OB edge (bull=low, bear=high; CLI research default)"
-    )
+    if entry_side == "far":
+        entry_side_desc = (
+            "far OB edge (bull=high, bear=low; live panel since 03fe84b)"
+        )
+    elif entry_side == "mid":
+        entry_side_desc = "OB mid ((high+low)/2; research)"
+    else:
+        entry_side_desc = (
+            "near OB edge (bull=low, bear=high; CLI research default)"
+        )
     matches_live = entry_side == "far" and abs(rr - 2.0) < 1e-9
     if matches_live:
         rules_note = (
@@ -872,6 +910,7 @@ def main(argv: list[str] | None = None) -> int:
         "ambiguous_mode": ambiguous_mode,
         "rr": rr,
         "entry_side": entry_side,
+        "tfs": run_tfs,
         "research_only": not matches_live,
         "matches_live_computeSlTp": matches_live,
         "live_app_unchanged": not matches_live,
@@ -894,7 +933,7 @@ def main(argv: list[str] | None = None) -> int:
             "tp_r": rr,
             "sl_r": -1.0,
             "buffer": "max(range*0.075, |entry|*1.5e-5) beyond OB extreme",
-            "tfs": TFS,
+            "tfs": run_tfs,
             "symbols": symbols,
             "note": rules_note,
         },

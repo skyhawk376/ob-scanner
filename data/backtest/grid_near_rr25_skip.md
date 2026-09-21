@@ -1,58 +1,58 @@
 # 5★ Order Block Backtest
 
-Generated: **2026-09-21 15:17 CEST** (Europe/Paris)
+Generated: **2026-09-21 15:16 CEST** (Europe/Paris)
 
-Universe: all `20` symbols × TF M5, M15, H1. Only OBs with **stars == 5 at detection time** (fresh/unmitigated). Entry-side **`far`** + TP **2.0R** matches **current live** `app.js` `computeSlTp` (since commit `03fe84b`; near=bull low/bear high; mid=(h+l)/2; far=bull high/bear low); buffer 7.5% of range beyond OB extreme. This report remains a historical backtest of that rule. Wick-touch entry. Entry mode: **`next_bar`** (same_bar = earliest fill on detection bar i; next_bar = earliest i+1). Ambiguous (both SL+TP same candle): **`skip`** (sl_first/count_as_loss = count as SL loss; skip = exclude from WR/R like timeouts).
+Universe: all `20` symbols × TF M5, M15, H1. Only OBs with **stars == 5 at detection time** (fresh/unmitigated). **Research variant** (CLI defaults; live panel is far + 2.0R since `03fe84b`): entry-side **`near`** (near=bull low/bear high; mid=(h+l)/2; far=bull high/bear low), buffer 7.5% of range beyond OB extreme, TP **2.5R**. Wick-touch entry. Entry mode: **`next_bar`** (same_bar = earliest fill on detection bar i; next_bar = earliest i+1). Ambiguous (both SL+TP same candle): **`skip`** (sl_first/count_as_loss = count as SL loss; skip = exclude from WR/R like timeouts).
 
-> **Note:** Historical backtest of the **live** far-edge + 2R rule (commit `03fe84b`). CLI research defaults remain `--entry-side near` / `--rr 1.5`.
+> **Note:** CLI research run (`--entry-side near` / `--rr 1.5` by default). Live panel `computeSlTp` is far + 2.0R since commit `03fe84b`.
 
 ## Totals
 
 | Metric | Value |
 |---|---|
 | Signals (5★) | 322 |
-| Closed trades | 242 |
-| Wins | 111 |
-| Losses | 131 |
-| Timeouts (excluded from winrate) | 67 |
-| Ambiguous (excluded from winrate) | 13 |
-| Winrate | 45.87% |
-| Avg R | 0.3760 |
-| Sum R | 91.0000 |
-| Profit factor | 1.69 |
+| Closed trades | 57 |
+| Wins | 44 |
+| Losses | 13 |
+| Timeouts (excluded from winrate) | 93 |
+| Ambiguous (excluded from winrate) | 172 |
+| Winrate | 77.19% |
+| Avg R | 1.7018 |
+| Sum R | 97.0000 |
+| Profit factor | 8.46 |
 
 ## By timeframe
 
 | TF | Closed | Winrate | Avg R | Sum R | PF | Timeouts | Ambiguous |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| M5 | 74 | 50.00% | 0.5000 | 37.0000 | 2.00 | 25 | 5 |
-| M15 | 60 | 43.33% | 0.3000 | 18.0000 | 1.53 | 16 | 2 |
-| H1 | 108 | 44.44% | 0.3333 | 36.0000 | 1.60 | 26 | 6 |
+| M5 | 17 | 76.47% | 1.6765 | 28.5000 | 8.12 | 34 | 53 |
+| M15 | 14 | 71.43% | 1.5000 | 21.0000 | 6.25 | 23 | 41 |
+| H1 | 26 | 80.77% | 1.8269 | 47.5000 | 10.50 | 36 | 78 |
 
 ## By symbol
 
 | Symbol | Closed | Winrate | Avg R | Sum R | PF | Timeouts | Ambiguous |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| AUDUSD | 17 | 52.94% | 0.5882 | 10.0000 | 2.25 | 0 | 0 |
-| BTCUSD | 4 | 0.00% | -1.0000 | -4.0000 | 0.00 | 1 | 0 |
-| ETHUSD | 5 | 100.00% | 2.0000 | 10.0000 | ∞ (no losses) | 1 | 1 |
-| EURJPY | 8 | 37.50% | 0.1250 | 1.0000 | 1.20 | 4 | 0 |
-| EURUSD | 15 | 46.67% | 0.4000 | 6.0000 | 1.75 | 2 | 2 |
-| GBPJPY | 12 | 66.67% | 1.0000 | 12.0000 | 4.00 | 4 | 0 |
-| GBPUSD | 17 | 23.53% | -0.2941 | -5.0000 | 0.62 | 7 | 1 |
-| NAS100 | 17 | 41.18% | 0.2353 | 4.0000 | 1.40 | 3 | 0 |
-| NZDUSD | 15 | 40.00% | 0.2000 | 3.0000 | 1.33 | 7 | 0 |
-| OIL | 13 | 38.46% | 0.1538 | 2.0000 | 1.25 | 3 | 1 |
-| RUSSELL | 18 | 44.44% | 0.3333 | 6.0000 | 1.60 | 3 | 1 |
-| SILVER | 15 | 53.33% | 0.6000 | 9.0000 | 2.29 | 4 | 0 |
-| SOLUSD | 5 | 60.00% | 0.8000 | 4.0000 | 3.00 | 1 | 1 |
-| SP500 | 16 | 56.25% | 0.6875 | 11.0000 | 2.57 | 1 | 2 |
-| US30 | 14 | 50.00% | 0.5000 | 7.0000 | 2.00 | 4 | 2 |
-| USDCAD | 9 | 55.56% | 0.6667 | 6.0000 | 2.50 | 2 | 0 |
-| USDCHF | 14 | 35.71% | 0.0714 | 1.0000 | 1.11 | 7 | 1 |
-| USDJPY | 10 | 60.00% | 0.8000 | 8.0000 | 3.00 | 8 | 0 |
-| XAUUSD | 5 | 40.00% | 0.2000 | 1.0000 | 1.33 | 1 | 0 |
-| XAUUSD_FUT | 13 | 30.77% | -0.0769 | -1.0000 | 0.89 | 4 | 1 |
+| AUDUSD | 8 | 62.50% | 1.1875 | 9.5000 | 4.17 | 2 | 7 |
+| BTCUSD | 0 | 0.00% | 0.0000 | 0.0000 | 0.00 | 1 | 4 |
+| ETHUSD | 1 | 100.00% | 2.5000 | 2.5000 | ∞ (no losses) | 4 | 2 |
+| EURJPY | 0 | 0.00% | 0.0000 | 0.0000 | 0.00 | 4 | 8 |
+| EURUSD | 11 | 81.82% | 1.8636 | 20.5000 | 11.25 | 2 | 6 |
+| GBPJPY | 1 | 100.00% | 2.5000 | 2.5000 | ∞ (no losses) | 4 | 11 |
+| GBPUSD | 5 | 80.00% | 1.8000 | 9.0000 | 10.00 | 7 | 13 |
+| NAS100 | 5 | 40.00% | 0.4000 | 2.0000 | 1.67 | 5 | 10 |
+| NZDUSD | 3 | 66.67% | 1.3333 | 4.0000 | 5.00 | 9 | 10 |
+| OIL | 4 | 75.00% | 1.6250 | 6.5000 | 7.50 | 3 | 10 |
+| RUSSELL | 4 | 100.00% | 2.5000 | 10.0000 | ∞ (no losses) | 4 | 14 |
+| SILVER | 1 | 100.00% | 2.5000 | 2.5000 | ∞ (no losses) | 4 | 14 |
+| SOLUSD | 2 | 100.00% | 2.5000 | 5.0000 | ∞ (no losses) | 3 | 2 |
+| SP500 | 2 | 50.00% | 0.7500 | 1.5000 | 2.50 | 3 | 14 |
+| US30 | 4 | 75.00% | 1.6250 | 6.5000 | 7.50 | 8 | 8 |
+| USDCAD | 2 | 100.00% | 2.5000 | 5.0000 | ∞ (no losses) | 5 | 4 |
+| USDCHF | 2 | 100.00% | 2.5000 | 5.0000 | ∞ (no losses) | 7 | 13 |
+| USDJPY | 0 | 0.00% | 0.0000 | 0.0000 | 0.00 | 11 | 7 |
+| XAUUSD | 1 | 100.00% | 2.5000 | 2.5000 | ∞ (no losses) | 1 | 4 |
+| XAUUSD_FUT | 1 | 100.00% | 2.5000 | 2.5000 | ∞ (no losses) | 6 | 11 |
 
 ## Fetch failures
 
@@ -134,6 +134,6 @@ _None — all symbol/TF pairs loaded (live or disk cache)._
 - **No costs:** no spread, commission, or slippage modeled.
 - **One trade per OB** (dedupe by OB time + side); no pyramiding.
 - **Timeouts** (never touched entry, or still open at series end) and **ambiguous** (both SL+TP same candle when `--ambiguous skip`) are **excluded** from winrate / avg R / sum R / profit factor.
-- **Entry-side (`far`):** `far` = **live** (bull=OB high, bear=OB low, since 03fe84b); `near` = CLI research default (bull=OB low, bear=OB high); `mid` = OB mid (high+low)/2. SL still beyond the opposite OB extreme with the same buffer formula.
-- **RR (`2.0`):** TP = entry ± RR×R; **live** app uses 2R (since 03fe84b); CLI research default remains 1.5R.
-- **Live alignment:** far + 2R matches current live `computeSlTp` (03fe84b). This file documents a historical backtest of that live rule; CLI defaults `--entry-side near` / `--rr 1.5` remain research-only.
+- **Entry-side (`near`):** `far` = **live** (bull=OB high, bear=OB low, since 03fe84b); `near` = CLI research default (bull=OB low, bear=OB high); `mid` = OB mid (high+low)/2. SL still beyond the opposite OB extreme with the same buffer formula.
+- **RR (`2.5`):** TP = entry ± RR×R; **live** app uses 2R (since 03fe84b); CLI research default remains 1.5R.
+- **Live vs this run:** live panel uses far + 2R (03fe84b); this report used CLI research settings (`near` + 2.5R), not current live.

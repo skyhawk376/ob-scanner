@@ -1,8 +1,8 @@
 # 5★ Order Block Backtest
 
-Generated: **2026-09-21 01:23 CEST** (Europe/Paris)
+Generated: **2026-09-21 15:17 CEST** (Europe/Paris)
 
-Universe: all `20` symbols × TF M5, M15, H1. Only OBs with **stars == 5 at detection time** (fresh/unmitigated). Entry-side **`far`** + TP **2.0R** matches **current live** `app.js` `computeSlTp` (since commit `03fe84b`; near=bull low/bear high; far=bull high/bear low); buffer 7.5% of range beyond OB extreme. This report remains a historical backtest of that rule. Wick-touch entry. Entry mode: **`next_bar`** (same_bar = earliest fill on detection bar i; next_bar = earliest i+1). Ambiguous (both SL+TP same candle): **`skip`** (sl_first = count as SL loss; skip = exclude from WR/R like timeouts).
+Universe: all `20` symbols × TF M5, M15, H1. Only OBs with **stars == 5 at detection time** (fresh/unmitigated). Entry-side **`far`** + TP **2.0R** matches **current live** `app.js` `computeSlTp` (since commit `03fe84b`; near=bull low/bear high; mid=(h+l)/2; far=bull high/bear low); buffer 7.5% of range beyond OB extreme. This report remains a historical backtest of that rule. Wick-touch entry. Entry mode: **`next_bar`** (same_bar = earliest fill on detection bar i; next_bar = earliest i+1). Ambiguous (both SL+TP same candle): **`skip`** (sl_first/count_as_loss = count as SL loss; skip = exclude from WR/R like timeouts).
 
 > **Note:** Historical backtest of the **live** far-edge + 2R rule (commit `03fe84b`). CLI research defaults remain `--entry-side near` / `--rr 1.5`.
 
@@ -123,19 +123,6 @@ _None — all symbol/TF pairs loaded (live or disk cache)._
 | RUSSELL | M15 | 717 | yahoo:RTY=F | True |
 | RUSSELL | H1 | 1124 | yahoo:RTY=F | True |
 
-## Vs previous skip run (research)
-
-| Run | Entry edge | RR | Closed | WR | Sum R | Ambiguous |
-|---|---|---:|---:|---:|---:|---:|
-| Previous (`ambiguous_skip`) | **near** (bull=low / bear=high; older research, pre-03fe84b) | 1.5 | 52 | **84.62%** | **+58.0R** | 177 |
-| **This run (`rr2_highlow_skip`)** | **far** (bull=high / bear=low) | **2.0** | 242 | **45.87%** | **+91.0R** | 13 |
-
-One-liner: vs prior skip (WR ~85%, +58R @ 1.5R with opposite/near entry), far+2R yields lower WR (~46%) but more closed trades and higher sum R (+91R) with far fewer ambiguous bars.
-
-**Honesty (`sl_first`, same far+2R):** closed 255, WR 43.53%, sum R +78.0, PF 1.54 (the 13 ambiguous counted as losses). See `rr2_highlow_sl_first.md`.
-
-Far + 2R = **current live** panel rule (03fe84b); near + 1.5R = older research / CLI defaults.
-
 ## Caveats
 
 - **Look-ahead in star heuristics (app.js parity):** FVG checks bars through displacement+3; Premium/Discount uses swing high through displacement+5. Signals are confirmed only when that window exists (`CONFIRM_BARS=5`). Trade walk earliest bar depends on `--entry` (same_bar=`dispIndex`, next_bar=`dispIndex+1`), so entry can still occur before full star confirmation — small methodological look-ahead vs a live alert that waits for +5 bars.
@@ -147,6 +134,6 @@ Far + 2R = **current live** panel rule (03fe84b); near + 1.5R = older research /
 - **No costs:** no spread, commission, or slippage modeled.
 - **One trade per OB** (dedupe by OB time + side); no pyramiding.
 - **Timeouts** (never touched entry, or still open at series end) and **ambiguous** (both SL+TP same candle when `--ambiguous skip`) are **excluded** from winrate / avg R / sum R / profit factor.
-- **Entry-side (`far`):** `far` = **live** (bull=OB high, bear=OB low, since 03fe84b); `near` = older research / CLI default (bull=OB low, bear=OB high). SL still beyond the opposite OB extreme with the same buffer formula.
+- **Entry-side (`far`):** `far` = **live** (bull=OB high, bear=OB low, since 03fe84b); `near` = CLI research default (bull=OB low, bear=OB high); `mid` = OB mid (high+low)/2. SL still beyond the opposite OB extreme with the same buffer formula.
 - **RR (`2.0`):** TP = entry ± RR×R; **live** app uses 2R (since 03fe84b); CLI research default remains 1.5R.
 - **Live alignment:** far + 2R matches current live `computeSlTp` (03fe84b). This file documents a historical backtest of that live rule; CLI defaults `--entry-side near` / `--rr 1.5` remain research-only.

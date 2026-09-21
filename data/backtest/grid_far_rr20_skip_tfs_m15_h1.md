@@ -1,8 +1,8 @@
 # 5★ Order Block Backtest
 
-Generated: **2026-09-21 15:17 CEST** (Europe/Paris)
+Generated: **2026-09-21 15:18 CEST** (Europe/Paris)
 
-Universe: all `20` symbols × TF M5, M15, H1. Only OBs with **stars == 5 at detection time** (fresh/unmitigated). Entry-side **`far`** + TP **2.0R** matches **current live** `app.js` `computeSlTp` (since commit `03fe84b`; near=bull low/bear high; mid=(h+l)/2; far=bull high/bear low); buffer 7.5% of range beyond OB extreme. This report remains a historical backtest of that rule. Wick-touch entry. Entry mode: **`next_bar`** (same_bar = earliest fill on detection bar i; next_bar = earliest i+1). Ambiguous (both SL+TP same candle): **`skip`** (sl_first/count_as_loss = count as SL loss; skip = exclude from WR/R like timeouts).
+Universe: all `20` symbols × TF M15, H1. Only OBs with **stars == 5 at detection time** (fresh/unmitigated). Entry-side **`far`** + TP **2.0R** matches **current live** `app.js` `computeSlTp` (since commit `03fe84b`; near=bull low/bear high; mid=(h+l)/2; far=bull high/bear low); buffer 7.5% of range beyond OB extreme. This report remains a historical backtest of that rule. Wick-touch entry. Entry mode: **`next_bar`** (same_bar = earliest fill on detection bar i; next_bar = earliest i+1). Ambiguous (both SL+TP same candle): **`skip`** (sl_first/count_as_loss = count as SL loss; skip = exclude from WR/R like timeouts).
 
 > **Note:** Historical backtest of the **live** far-edge + 2R rule (commit `03fe84b`). CLI research defaults remain `--entry-side near` / `--rr 1.5`.
 
@@ -10,22 +10,21 @@ Universe: all `20` symbols × TF M5, M15, H1. Only OBs with **stars == 5 at dete
 
 | Metric | Value |
 |---|---|
-| Signals (5★) | 322 |
-| Closed trades | 242 |
-| Wins | 111 |
-| Losses | 131 |
-| Timeouts (excluded from winrate) | 67 |
-| Ambiguous (excluded from winrate) | 13 |
-| Winrate | 45.87% |
-| Avg R | 0.3760 |
-| Sum R | 91.0000 |
-| Profit factor | 1.69 |
+| Signals (5★) | 218 |
+| Closed trades | 168 |
+| Wins | 74 |
+| Losses | 94 |
+| Timeouts (excluded from winrate) | 42 |
+| Ambiguous (excluded from winrate) | 8 |
+| Winrate | 44.05% |
+| Avg R | 0.3214 |
+| Sum R | 54.0000 |
+| Profit factor | 1.57 |
 
 ## By timeframe
 
 | TF | Closed | Winrate | Avg R | Sum R | PF | Timeouts | Ambiguous |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| M5 | 74 | 50.00% | 0.5000 | 37.0000 | 2.00 | 25 | 5 |
 | M15 | 60 | 43.33% | 0.3000 | 18.0000 | 1.53 | 16 | 2 |
 | H1 | 108 | 44.44% | 0.3333 | 36.0000 | 1.60 | 26 | 6 |
 
@@ -33,26 +32,26 @@ Universe: all `20` symbols × TF M5, M15, H1. Only OBs with **stars == 5 at dete
 
 | Symbol | Closed | Winrate | Avg R | Sum R | PF | Timeouts | Ambiguous |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| AUDUSD | 17 | 52.94% | 0.5882 | 10.0000 | 2.25 | 0 | 0 |
+| AUDUSD | 10 | 40.00% | 0.2000 | 2.0000 | 1.33 | 0 | 0 |
 | BTCUSD | 4 | 0.00% | -1.0000 | -4.0000 | 0.00 | 1 | 0 |
-| ETHUSD | 5 | 100.00% | 2.0000 | 10.0000 | ∞ (no losses) | 1 | 1 |
-| EURJPY | 8 | 37.50% | 0.1250 | 1.0000 | 1.20 | 4 | 0 |
-| EURUSD | 15 | 46.67% | 0.4000 | 6.0000 | 1.75 | 2 | 2 |
-| GBPJPY | 12 | 66.67% | 1.0000 | 12.0000 | 4.00 | 4 | 0 |
-| GBPUSD | 17 | 23.53% | -0.2941 | -5.0000 | 0.62 | 7 | 1 |
-| NAS100 | 17 | 41.18% | 0.2353 | 4.0000 | 1.40 | 3 | 0 |
-| NZDUSD | 15 | 40.00% | 0.2000 | 3.0000 | 1.33 | 7 | 0 |
-| OIL | 13 | 38.46% | 0.1538 | 2.0000 | 1.25 | 3 | 1 |
-| RUSSELL | 18 | 44.44% | 0.3333 | 6.0000 | 1.60 | 3 | 1 |
-| SILVER | 15 | 53.33% | 0.6000 | 9.0000 | 2.29 | 4 | 0 |
-| SOLUSD | 5 | 60.00% | 0.8000 | 4.0000 | 3.00 | 1 | 1 |
-| SP500 | 16 | 56.25% | 0.6875 | 11.0000 | 2.57 | 1 | 2 |
-| US30 | 14 | 50.00% | 0.5000 | 7.0000 | 2.00 | 4 | 2 |
-| USDCAD | 9 | 55.56% | 0.6667 | 6.0000 | 2.50 | 2 | 0 |
-| USDCHF | 14 | 35.71% | 0.0714 | 1.0000 | 1.11 | 7 | 1 |
-| USDJPY | 10 | 60.00% | 0.8000 | 8.0000 | 3.00 | 8 | 0 |
-| XAUUSD | 5 | 40.00% | 0.2000 | 1.0000 | 1.33 | 1 | 0 |
-| XAUUSD_FUT | 13 | 30.77% | -0.0769 | -1.0000 | 0.89 | 4 | 1 |
+| ETHUSD | 3 | 100.00% | 2.0000 | 6.0000 | ∞ (no losses) | 0 | 0 |
+| EURJPY | 7 | 42.86% | 0.2857 | 2.0000 | 1.50 | 2 | 0 |
+| EURUSD | 12 | 41.67% | 0.2500 | 3.0000 | 1.43 | 2 | 2 |
+| GBPJPY | 9 | 55.56% | 0.6667 | 6.0000 | 2.50 | 1 | 0 |
+| GBPUSD | 13 | 23.08% | -0.3077 | -4.0000 | 0.60 | 3 | 1 |
+| NAS100 | 12 | 41.67% | 0.2500 | 3.0000 | 1.43 | 2 | 0 |
+| NZDUSD | 9 | 44.44% | 0.3333 | 3.0000 | 1.60 | 6 | 0 |
+| OIL | 8 | 37.50% | 0.1250 | 1.0000 | 1.20 | 0 | 1 |
+| RUSSELL | 14 | 57.14% | 0.7143 | 10.0000 | 2.67 | 2 | 1 |
+| SILVER | 6 | 66.67% | 1.0000 | 6.0000 | 4.00 | 2 | 0 |
+| SOLUSD | 5 | 60.00% | 0.8000 | 4.0000 | 3.00 | 1 | 0 |
+| SP500 | 11 | 54.55% | 0.6364 | 7.0000 | 2.40 | 1 | 1 |
+| US30 | 9 | 55.56% | 0.6667 | 6.0000 | 2.50 | 4 | 1 |
+| USDCAD | 8 | 50.00% | 0.5000 | 4.0000 | 2.00 | 2 | 0 |
+| USDCHF | 12 | 41.67% | 0.2500 | 3.0000 | 1.43 | 5 | 1 |
+| USDJPY | 4 | 50.00% | 0.5000 | 2.0000 | 2.00 | 5 | 0 |
+| XAUUSD | 4 | 25.00% | -0.2500 | -1.0000 | 0.67 | 1 | 0 |
+| XAUUSD_FUT | 8 | 12.50% | -0.6250 | -5.0000 | 0.29 | 2 | 0 |
 
 ## Fetch failures
 
@@ -62,64 +61,44 @@ _None — all symbol/TF pairs loaded (live or disk cache)._
 
 | Symbol | TF | Bars | Source | From disk |
 |---|---|---:|---|---|
-| XAUUSD | M5 | 350 | coinbase:PAXG-USD | True |
 | XAUUSD | M15 | 350 | coinbase:PAXG-USD | True |
 | XAUUSD | H1 | 350 | coinbase:PAXG-USD | True |
-| BTCUSD | M5 | 350 | coinbase:BTC-USD | True |
 | BTCUSD | M15 | 350 | coinbase:BTC-USD | True |
 | BTCUSD | H1 | 350 | coinbase:BTC-USD | True |
-| ETHUSD | M5 | 350 | coinbase:ETH-USD | True |
 | ETHUSD | M15 | 350 | coinbase:ETH-USD | True |
 | ETHUSD | H1 | 350 | coinbase:ETH-USD | True |
-| SOLUSD | M5 | 350 | coinbase:SOL-USD | True |
 | SOLUSD | M15 | 350 | coinbase:SOL-USD | True |
 | SOLUSD | H1 | 350 | coinbase:SOL-USD | True |
-| NAS100 | M5 | 931 | yahoo:NQ=F | True |
 | NAS100 | M15 | 704 | yahoo:NQ=F | True |
 | NAS100 | H1 | 1143 | yahoo:NQ=F | True |
-| SP500 | M5 | 1037 | yahoo:ES=F | True |
 | SP500 | M15 | 717 | yahoo:ES=F | True |
 | SP500 | H1 | 1123 | yahoo:ES=F | True |
-| EURUSD | M5 | 1374 | yahoo:EURUSD=X | True |
 | EURUSD | M15 | 933 | yahoo:EURUSD=X | True |
 | EURUSD | H1 | 1425 | yahoo:EURUSD=X | True |
-| GBPUSD | M5 | 1135 | yahoo:GBPUSD=X | True |
 | GBPUSD | M15 | 853 | yahoo:GBPUSD=X | True |
 | GBPUSD | H1 | 1405 | yahoo:GBPUSD=X | True |
-| XAUUSD_FUT | M5 | 1042 | yahoo:GC=F | True |
 | XAUUSD_FUT | M15 | 717 | yahoo:GC=F | True |
 | XAUUSD_FUT | H1 | 1125 | yahoo:GC=F | True |
-| USDJPY | M5 | 1130 | yahoo:USDJPY=X | True |
 | USDJPY | M15 | 850 | yahoo:USDJPY=X | True |
 | USDJPY | H1 | 1397 | yahoo:USDJPY=X | True |
-| AUDUSD | M5 | 1135 | yahoo:AUDUSD=X | True |
 | AUDUSD | M15 | 925 | yahoo:AUDUSD=X | True |
 | AUDUSD | H1 | 1405 | yahoo:AUDUSD=X | True |
-| US30 | M5 | 1042 | yahoo:YM=F | True |
 | US30 | M15 | 694 | yahoo:YM=F | True |
 | US30 | H1 | 1125 | yahoo:YM=F | True |
-| NZDUSD | M5 | 1135 | yahoo:NZDUSD=X | True |
 | NZDUSD | M15 | 854 | yahoo:NZDUSD=X | True |
 | NZDUSD | H1 | 1406 | yahoo:NZDUSD=X | True |
-| USDCAD | M5 | 1132 | yahoo:USDCAD=X | True |
 | USDCAD | M15 | 853 | yahoo:USDCAD=X | True |
 | USDCAD | H1 | 1407 | yahoo:USDCAD=X | True |
-| USDCHF | M5 | 1130 | yahoo:USDCHF=X | True |
 | USDCHF | M15 | 851 | yahoo:USDCHF=X | True |
 | USDCHF | H1 | 1398 | yahoo:USDCHF=X | True |
-| EURJPY | M5 | 1136 | yahoo:EURJPY=X | True |
 | EURJPY | M15 | 854 | yahoo:EURJPY=X | True |
 | EURJPY | H1 | 1406 | yahoo:EURJPY=X | True |
-| GBPJPY | M5 | 1136 | yahoo:GBPJPY=X | True |
 | GBPJPY | M15 | 854 | yahoo:GBPJPY=X | True |
 | GBPJPY | H1 | 1405 | yahoo:GBPJPY=X | True |
-| SILVER | M5 | 1042 | yahoo:SI=F | True |
 | SILVER | M15 | 717 | yahoo:SI=F | True |
 | SILVER | H1 | 1127 | yahoo:SI=F | True |
-| OIL | M5 | 1042 | yahoo:CL=F | True |
 | OIL | M15 | 717 | yahoo:CL=F | True |
 | OIL | H1 | 1124 | yahoo:CL=F | True |
-| RUSSELL | M5 | 1036 | yahoo:RTY=F | True |
 | RUSSELL | M15 | 717 | yahoo:RTY=F | True |
 | RUSSELL | H1 | 1124 | yahoo:RTY=F | True |
 

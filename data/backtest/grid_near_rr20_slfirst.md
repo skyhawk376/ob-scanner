@@ -1,58 +1,58 @@
 # 5★ Order Block Backtest
 
-Generated: **2026-09-21 15:17 CEST** (Europe/Paris)
+Generated: **2026-09-21 15:16 CEST** (Europe/Paris)
 
-Universe: all `20` symbols × TF M5, M15, H1. Only OBs with **stars == 5 at detection time** (fresh/unmitigated). Entry-side **`far`** + TP **2.0R** matches **current live** `app.js` `computeSlTp` (since commit `03fe84b`; near=bull low/bear high; mid=(h+l)/2; far=bull high/bear low); buffer 7.5% of range beyond OB extreme. This report remains a historical backtest of that rule. Wick-touch entry. Entry mode: **`next_bar`** (same_bar = earliest fill on detection bar i; next_bar = earliest i+1). Ambiguous (both SL+TP same candle): **`skip`** (sl_first/count_as_loss = count as SL loss; skip = exclude from WR/R like timeouts).
+Universe: all `20` symbols × TF M5, M15, H1. Only OBs with **stars == 5 at detection time** (fresh/unmitigated). **Research variant** (CLI defaults; live panel is far + 2.0R since `03fe84b`): entry-side **`near`** (near=bull low/bear high; mid=(h+l)/2; far=bull high/bear low), buffer 7.5% of range beyond OB extreme, TP **2.0R**. Wick-touch entry. Entry mode: **`next_bar`** (same_bar = earliest fill on detection bar i; next_bar = earliest i+1). Ambiguous (both SL+TP same candle): **`sl_first`** (sl_first/count_as_loss = count as SL loss; skip = exclude from WR/R like timeouts).
 
-> **Note:** Historical backtest of the **live** far-edge + 2R rule (commit `03fe84b`). CLI research defaults remain `--entry-side near` / `--rr 1.5`.
+> **Note:** CLI research run (`--entry-side near` / `--rr 1.5` by default). Live panel `computeSlTp` is far + 2.0R since commit `03fe84b`.
 
 ## Totals
 
 | Metric | Value |
 |---|---|
 | Signals (5★) | 322 |
-| Closed trades | 242 |
-| Wins | 111 |
-| Losses | 131 |
-| Timeouts (excluded from winrate) | 67 |
-| Ambiguous (excluded from winrate) | 13 |
-| Winrate | 45.87% |
-| Avg R | 0.3760 |
-| Sum R | 91.0000 |
-| Profit factor | 1.69 |
+| Closed trades | 229 |
+| Wins | 44 |
+| Losses | 185 |
+| Timeouts (excluded from winrate) | 93 |
+| Ambiguous (excluded from winrate) | 0 |
+| Winrate | 19.21% |
+| Avg R | -0.4236 |
+| Sum R | -97.0000 |
+| Profit factor | 0.48 |
 
 ## By timeframe
 
 | TF | Closed | Winrate | Avg R | Sum R | PF | Timeouts | Ambiguous |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| M5 | 74 | 50.00% | 0.5000 | 37.0000 | 2.00 | 25 | 5 |
-| M15 | 60 | 43.33% | 0.3000 | 18.0000 | 1.53 | 16 | 2 |
-| H1 | 108 | 44.44% | 0.3333 | 36.0000 | 1.60 | 26 | 6 |
+| M5 | 70 | 18.57% | -0.4429 | -31.0000 | 0.46 | 34 | 0 |
+| M15 | 55 | 18.18% | -0.4545 | -25.0000 | 0.44 | 23 | 0 |
+| H1 | 104 | 20.19% | -0.3942 | -41.0000 | 0.51 | 36 | 0 |
 
 ## By symbol
 
 | Symbol | Closed | Winrate | Avg R | Sum R | PF | Timeouts | Ambiguous |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| AUDUSD | 17 | 52.94% | 0.5882 | 10.0000 | 2.25 | 0 | 0 |
+| AUDUSD | 15 | 33.33% | 0.0000 | 0.0000 | 1.00 | 2 | 0 |
 | BTCUSD | 4 | 0.00% | -1.0000 | -4.0000 | 0.00 | 1 | 0 |
-| ETHUSD | 5 | 100.00% | 2.0000 | 10.0000 | ∞ (no losses) | 1 | 1 |
-| EURJPY | 8 | 37.50% | 0.1250 | 1.0000 | 1.20 | 4 | 0 |
-| EURUSD | 15 | 46.67% | 0.4000 | 6.0000 | 1.75 | 2 | 2 |
-| GBPJPY | 12 | 66.67% | 1.0000 | 12.0000 | 4.00 | 4 | 0 |
-| GBPUSD | 17 | 23.53% | -0.2941 | -5.0000 | 0.62 | 7 | 1 |
-| NAS100 | 17 | 41.18% | 0.2353 | 4.0000 | 1.40 | 3 | 0 |
-| NZDUSD | 15 | 40.00% | 0.2000 | 3.0000 | 1.33 | 7 | 0 |
-| OIL | 13 | 38.46% | 0.1538 | 2.0000 | 1.25 | 3 | 1 |
-| RUSSELL | 18 | 44.44% | 0.3333 | 6.0000 | 1.60 | 3 | 1 |
-| SILVER | 15 | 53.33% | 0.6000 | 9.0000 | 2.29 | 4 | 0 |
-| SOLUSD | 5 | 60.00% | 0.8000 | 4.0000 | 3.00 | 1 | 1 |
-| SP500 | 16 | 56.25% | 0.6875 | 11.0000 | 2.57 | 1 | 2 |
-| US30 | 14 | 50.00% | 0.5000 | 7.0000 | 2.00 | 4 | 2 |
-| USDCAD | 9 | 55.56% | 0.6667 | 6.0000 | 2.50 | 2 | 0 |
-| USDCHF | 14 | 35.71% | 0.0714 | 1.0000 | 1.11 | 7 | 1 |
-| USDJPY | 10 | 60.00% | 0.8000 | 8.0000 | 3.00 | 8 | 0 |
-| XAUUSD | 5 | 40.00% | 0.2000 | 1.0000 | 1.33 | 1 | 0 |
-| XAUUSD_FUT | 13 | 30.77% | -0.0769 | -1.0000 | 0.89 | 4 | 1 |
+| ETHUSD | 3 | 33.33% | 0.0000 | 0.0000 | 1.00 | 4 | 0 |
+| EURJPY | 8 | 0.00% | -1.0000 | -8.0000 | 0.00 | 4 | 0 |
+| EURUSD | 17 | 52.94% | 0.5882 | 10.0000 | 2.25 | 2 | 0 |
+| GBPJPY | 12 | 8.33% | -0.7500 | -9.0000 | 0.18 | 4 | 0 |
+| GBPUSD | 18 | 22.22% | -0.3333 | -6.0000 | 0.57 | 7 | 0 |
+| NAS100 | 15 | 13.33% | -0.6000 | -9.0000 | 0.31 | 5 | 0 |
+| NZDUSD | 13 | 15.38% | -0.5385 | -7.0000 | 0.36 | 9 | 0 |
+| OIL | 14 | 21.43% | -0.3571 | -5.0000 | 0.55 | 3 | 0 |
+| RUSSELL | 18 | 22.22% | -0.3333 | -6.0000 | 0.57 | 4 | 0 |
+| SILVER | 15 | 6.67% | -0.8000 | -12.0000 | 0.14 | 4 | 0 |
+| SOLUSD | 4 | 50.00% | 0.5000 | 2.0000 | 2.00 | 3 | 0 |
+| SP500 | 16 | 6.25% | -0.8125 | -13.0000 | 0.13 | 3 | 0 |
+| US30 | 12 | 25.00% | -0.2500 | -3.0000 | 0.67 | 8 | 0 |
+| USDCAD | 6 | 33.33% | 0.0000 | 0.0000 | 1.00 | 5 | 0 |
+| USDCHF | 15 | 13.33% | -0.6000 | -9.0000 | 0.31 | 7 | 0 |
+| USDJPY | 7 | 0.00% | -1.0000 | -7.0000 | 0.00 | 11 | 0 |
+| XAUUSD | 5 | 20.00% | -0.4000 | -2.0000 | 0.50 | 1 | 0 |
+| XAUUSD_FUT | 12 | 8.33% | -0.7500 | -9.0000 | 0.18 | 6 | 0 |
 
 ## Fetch failures
 
@@ -128,12 +128,12 @@ _None — all symbol/TF pairs loaded (live or disk cache)._
 - **Look-ahead in star heuristics (app.js parity):** FVG checks bars through displacement+3; Premium/Discount uses swing high through displacement+5. Signals are confirmed only when that window exists (`CONFIRM_BARS=5`). Trade walk earliest bar depends on `--entry` (same_bar=`dispIndex`, next_bar=`dispIndex+1`), so entry can still occur before full star confirmation — small methodological look-ahead vs a live alert that waits for +5 bars.
 - **Mitigation at detection:** `fresh` uses close-through-mid only inside the confirmation window (not the full remaining series), so 5★ means unmitigated *at detection*, matching the brief.
 - **Entry mode (`next_bar`):** `same_bar` allows wick-touch fill from `dispIndex` (detection bar); `next_bar` forbids fill on the detection bar (earliest `dispIndex+1`).
-- **Same-bar SL/TP ambiguity (`skip`):** if both SL and TP wicks print on the entry fill bar (or any later bar): `sl_first` counts as **loss** (conservative); `skip` marks outcome **ambiguous** and excludes from winrate / avg R / sum R / PF (like timeouts).
+- **Same-bar SL/TP ambiguity (`sl_first`):** if both SL and TP wicks print on the entry fill bar (or any later bar): `sl_first` counts as **loss** (conservative); `skip` marks outcome **ambiguous** and excludes from winrate / avg R / sum R / PF (like timeouts).
 - **Sample size:** Yahoo ranges are short (`M5→5d`, `M15→10d`, `H1→60d` per `TF_MAP` in server.py). Coinbase returns ~300 candles max. Results are noisy; do not overfit.
 - **Proxies:** XAUUSD uses Coinbase PAXG-USD; indices/commodities use Yahoo futures (NQ=F, ES=F, etc.) — not identical to broker CFDs.
 - **No costs:** no spread, commission, or slippage modeled.
 - **One trade per OB** (dedupe by OB time + side); no pyramiding.
 - **Timeouts** (never touched entry, or still open at series end) and **ambiguous** (both SL+TP same candle when `--ambiguous skip`) are **excluded** from winrate / avg R / sum R / profit factor.
-- **Entry-side (`far`):** `far` = **live** (bull=OB high, bear=OB low, since 03fe84b); `near` = CLI research default (bull=OB low, bear=OB high); `mid` = OB mid (high+low)/2. SL still beyond the opposite OB extreme with the same buffer formula.
+- **Entry-side (`near`):** `far` = **live** (bull=OB high, bear=OB low, since 03fe84b); `near` = CLI research default (bull=OB low, bear=OB high); `mid` = OB mid (high+low)/2. SL still beyond the opposite OB extreme with the same buffer formula.
 - **RR (`2.0`):** TP = entry ± RR×R; **live** app uses 2R (since 03fe84b); CLI research default remains 1.5R.
-- **Live alignment:** far + 2R matches current live `computeSlTp` (03fe84b). This file documents a historical backtest of that live rule; CLI defaults `--entry-side near` / `--rr 1.5` remain research-only.
+- **Live vs this run:** live panel uses far + 2R (03fe84b); this report used CLI research settings (`near` + 2.0R), not current live.

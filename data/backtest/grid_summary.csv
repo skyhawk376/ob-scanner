@@ -1,0 +1,26 @@
+tag,entry_side,rr,ambiguous_mode,entry_mode,tfs,signals,closed,wins,losses,timeouts,ambiguous,ambig_pct_of_potential,winrate_pct,avg_r,sum_r,profit_factor,elapsed_s,error,json
+grid_near_rr15_skip,near,1.5,skip,next_bar,"M5,M15,H1",322,52,44,8,93,177,77.29,84.62,1.1154,58.0,8.25,3.4,,data/backtest/grid_near_rr15_skip.json
+grid_near_rr15_slfirst,near,1.5,sl_first,next_bar,"M5,M15,H1",322,229,44,185,93,0,0.0,19.21,-0.5197,-119.0,0.3568,3.4,,data/backtest/grid_near_rr15_slfirst.json
+grid_near_rr20_skip,near,2.0,skip,next_bar,"M5,M15,H1",322,54,44,10,93,175,76.42,81.48,1.4444,78.0,8.8,3.4,,data/backtest/grid_near_rr20_skip.json
+grid_near_rr20_slfirst,near,2.0,sl_first,next_bar,"M5,M15,H1",322,229,44,185,93,0,0.0,19.21,-0.4236,-97.0,0.4757,3.4,,data/backtest/grid_near_rr20_slfirst.json
+grid_near_rr25_skip,near,2.5,skip,next_bar,"M5,M15,H1",322,57,44,13,93,172,75.11,77.19,1.7018,97.0,8.4615,3.4,,data/backtest/grid_near_rr25_skip.json
+grid_near_rr25_slfirst,near,2.5,sl_first,next_bar,"M5,M15,H1",322,229,44,185,93,0,0.0,19.21,-0.3275,-75.0,0.5946,3.4,,data/backtest/grid_near_rr25_slfirst.json
+grid_near_rr30_skip,near,3.0,skip,next_bar,"M5,M15,H1",322,61,44,17,93,168,73.36,72.13,1.8852,115.0,7.7647,3.4,,data/backtest/grid_near_rr30_skip.json
+grid_near_rr30_slfirst,near,3.0,sl_first,next_bar,"M5,M15,H1",322,229,44,185,93,0,0.0,19.21,-0.2314,-53.0,0.7135,3.4,,data/backtest/grid_near_rr30_slfirst.json
+grid_mid_rr15_skip,mid,1.5,skip,next_bar,"M5,M15,H1",322,189,111,78,85,48,20.25,58.73,0.4683,88.5,2.1346,3.4,,data/backtest/grid_mid_rr15_skip.json
+grid_mid_rr15_slfirst,mid,1.5,sl_first,next_bar,"M5,M15,H1",322,237,111,126,85,0,0.0,46.84,0.1709,40.5,1.3214,3.4,,data/backtest/grid_mid_rr15_slfirst.json
+grid_mid_rr20_skip,mid,2.0,skip,next_bar,"M5,M15,H1",322,199,84,115,85,38,16.03,42.21,0.2663,53.0,1.4609,3.4,,data/backtest/grid_mid_rr20_skip.json
+grid_mid_rr20_slfirst,mid,2.0,sl_first,next_bar,"M5,M15,H1",322,237,84,153,85,0,0.0,35.44,0.0633,15.0,1.098,3.4,,data/backtest/grid_mid_rr20_slfirst.json
+grid_mid_rr25_skip,mid,2.5,skip,next_bar,"M5,M15,H1",322,204,75,129,85,33,13.92,36.76,0.2868,58.5,1.4535,3.4,,data/backtest/grid_mid_rr25_skip.json
+grid_mid_rr25_slfirst,mid,2.5,sl_first,next_bar,"M5,M15,H1",322,237,75,162,85,0,0.0,31.65,0.1076,25.5,1.1574,3.5,,data/backtest/grid_mid_rr25_slfirst.json
+grid_mid_rr30_skip,mid,3.0,skip,next_bar,"M5,M15,H1",322,206,61,145,85,31,13.08,29.61,0.1845,38.0,1.2621,3.4,,data/backtest/grid_mid_rr30_skip.json
+grid_mid_rr30_slfirst,mid,3.0,sl_first,next_bar,"M5,M15,H1",322,237,61,176,85,0,0.0,25.74,0.0295,7.0,1.0398,3.4,,data/backtest/grid_mid_rr30_slfirst.json
+grid_far_rr15_skip,far,1.5,skip,next_bar,"M5,M15,H1",322,242,139,103,65,15,5.84,57.44,0.436,105.5,2.0243,3.4,,data/backtest/grid_far_rr15_skip.json
+grid_far_rr15_slfirst,far,1.5,sl_first,next_bar,"M5,M15,H1",322,257,139,118,65,0,0.0,54.09,0.3521,90.5,1.7669,3.4,,data/backtest/grid_far_rr15_slfirst.json
+grid_far_rr20_skip,far,2.0,skip,next_bar,"M5,M15,H1",322,242,111,131,67,13,5.1,45.87,0.376,91.0,1.6947,3.4,,data/backtest/grid_far_rr20_skip.json
+grid_far_rr20_slfirst,far,2.0,sl_first,next_bar,"M5,M15,H1",322,255,111,144,67,0,0.0,43.53,0.3059,78.0,1.5417,3.4,,data/backtest/grid_far_rr20_slfirst.json
+grid_far_rr25_skip,far,2.5,skip,next_bar,"M5,M15,H1",322,248,88,160,67,7,2.75,35.48,0.2419,60.0,1.375,3.4,,data/backtest/grid_far_rr25_skip.json
+grid_far_rr25_slfirst,far,2.5,sl_first,next_bar,"M5,M15,H1",322,255,88,167,67,0,0.0,34.51,0.2078,53.0,1.3174,3.4,,data/backtest/grid_far_rr25_slfirst.json
+grid_far_rr30_skip,far,3.0,skip,next_bar,"M5,M15,H1",322,246,74,172,68,8,3.15,30.08,0.2033,50.0,1.2907,3.4,,data/backtest/grid_far_rr30_skip.json
+grid_far_rr30_slfirst,far,3.0,sl_first,next_bar,"M5,M15,H1",322,254,74,180,68,0,0.0,29.13,0.1654,42.0,1.2333,3.4,,data/backtest/grid_far_rr30_slfirst.json
+rr2_highlow_skip (baseline live-like far+2+skip),far,2.0,skip,next_bar,"M5,M15,H1",322,242,111,131,67,13,5.1,45.87,0.376,91.0,1.6947,,,data/backtest/rr2_highlow_skip.json
