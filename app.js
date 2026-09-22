@@ -31,6 +31,8 @@
   ];
 
   const MAX_OBS = 40;
+  /** Soft cap for retained OB lists after merge (scan monde + refresh). */
+  const LIST_MERGE_CAP = 180;
   const BODY_LOOKBACK = 20;
   const BREAK_LOOKBACK = 10;
   const BOS_LOOKBACK = 20; // stricter lookback for BOS★ (break of structure)
@@ -628,6 +630,78 @@
   }
 
 
+  // --- Persist OBs across rescans (merge, don't wipe) ---
+  function obMergeKey(ob) {
+    const sym = ob.symbol != null ? ob.symbol : state.symbol;
+    const tf = ob.tf != null ? ob.tf : state.tf;
+    return `${sym}|${tf}|${ob.side}|${ob.time}`;
+  }
+
+  /**
+   * Merge previous list with freshly detected OBs.
+   * - Same key → update stars / mitigated / levels from fresh
+   * - Only in prev → keep (esp. mitigated that fell out of detection)
+   * - Cap: drop oldest mitigated first, then oldest by time
+   */
+  function mergeObLists(prev, fresh, opts) {
+    opts = opts || {};
+    const cap = opts.cap != null ? opts.cap : LIST_MERGE_CAP;
+    const map = new Map();
+    for (const o of prev || []) {
+      if (!o || o.time == null || !o.side) continue;
+      map.set(obMergeKey(o), o);
+    }
+    for (const o of fresh || []) {
+      if (!o || o.time == null || !o.side) continue;
+      const key = obMergeKey(o);
+      const older = map.get(key);
+      if (older) {
+        map.set(key, Object.assign({}, older, o, {
+          // keep stable id if fresh regenerated a different one
+          id: older.id || o.id,
+        }));
+      } else {
+        map.set(key, o);
+      }
+    }
+    let merged = Array.from(map.values());
+    const TF_RANK = { H1: 3, M15: 2, M5: 1 };
+    merged.sort((a, b) => {
+      if (b.stars !== a.stars) return b.stars - a.stars;
+      const ra = TF_RANK[a.tf] || 0;
+      const rb = TF_RANK[b.tf] || 0;
+      if (rb !== ra) return rb - ra;
+      if (a.mitigated !== b.mitigated) return a.mitigated ? 1 : -1;
+      return b.time - a.time;
+    });
+    if (merged.length <= cap) return merged;
+    // Evict oldest mitigated first, then oldest overall
+    const keep = merged.slice();
+    while (keep.length > cap) {
+      let idx = -1;
+      let oldest = Infinity;
+      for (let i = 0; i < keep.length; i++) {
+        const o = keep[i];
+        if (o.mitigated && o.time < oldest) {
+          oldest = o.time;
+          idx = i;
+        }
+      }
+      if (idx < 0) {
+        oldest = Infinity;
+        for (let i = 0; i < keep.length; i++) {
+          if (keep[i].time < oldest) {
+            oldest = keep[i].time;
+            idx = i;
+          }
+        }
+      }
+      if (idx < 0) break;
+      keep.splice(idx, 1);
+    }
+    return keep;
+  }
+
   // --- Checked OBs (localStorage + optional cloud sync) ---
   const CHECKED_LS_KEY = "ob-scanner-checked-v1";
   const SYNC_CODE_LS_KEY = "ob-scanner-sync-code-v1";
@@ -959,7 +1033,15 @@
       clearZones();
       if (!chartOnly) {
         selectedObForDraw = null;
-        state.obs = detectOrderBlocks(state.candles);
+        const fresh = detectOrderBlocks(state.candles);
+        // Keep prior OBs for this symbol/TF (mitigated etc.) instead of wiping
+        const prevSame = (state.obs || []).filter((o) => {
+          const sym = o.symbol != null ? o.symbol : state.symbol;
+          const tf = o.tf != null ? o.tf : state.tf;
+          return sym === state.symbol && tf === state.tf;
+        });
+        const merged = mergeObLists(prevSame, fresh, { cap: LIST_MERGE_CAP });
+        state.obs = merged;
         state.selectedId = null;
         state.listMode = "single";
         state.multiObs = [];
@@ -967,8 +1049,10 @@
         chart.timeScale().fitContent();
         const geMin = state.obs.filter((o) => o.stars >= state.minStars).length;
         const activeGe = state.obs.filter((o) => !o.mitigated && o.stars >= state.minStars).length;
+        const retained = merged.length - fresh.length;
         setStatus(
-          `${geMin} OB ≥${state.minStars}★ (${activeGe} active) · ${state.obs.length} capped`
+          `${geMin} OB ≥${state.minStars}★ (${activeGe} active) · ${merged.length} kept` +
+            (retained > 0 ? ` · +${retained} retained` : "")
         );
       } else {
         chart.timeScale().fitContent();
@@ -1073,15 +1157,14 @@
   /**
    * World hunt: every watchlist symbol × M5 + M15 + H1.
    * Sequential (~350ms delay), stars===5; showMitigated controls mitigated inclusion.
-   * Dedupe symbol|tf|side|time; sort stars → TF H1>M15>M5 → recent; cap ~100.
+   * Dedupe symbol|tf|side|time; MERGE with previous multi list (keep mitigated); cap LIST_MERGE_CAP.
    */
   async function scanWorldFiveStars() {
     const symbols = WATCHLIST.map((s) => s.id);
     const tfs = ["M5", "M15", "H1"];
-    const TF_RANK = { H1: 3, M15: 2, M5: 1 };
     const showMit = state.showMitigated;
     const collected = [];
-    const WORLD_CAP = 120;
+    // list cap via LIST_MERGE_CAP in mergeObLists
     const SCAN_DELAY_MS = 350;
     const jobs = [];
     for (const sym of symbols) {
@@ -1108,24 +1191,24 @@
         if (i < jobs.length - 1) await sleep(SCAN_DELAY_MS);
       }
 
-      collected.sort((a, b) => {
-        if (b.stars !== a.stars) return b.stars - a.stars;
-        const ra = TF_RANK[a.tf] || 0;
-        const rb = TF_RANK[b.tf] || 0;
-        if (rb !== ra) return rb - ra;
-        if (a.mitigated !== b.mitigated) return a.mitigated ? 1 : -1;
-        return b.time - a.time;
-      });
-
+      // Dedupe this scan's detections first
       const seen = new Set();
-      const merged = [];
+      const freshOnly = [];
       for (const o of collected) {
-        const key = `${o.symbol}|${o.tf}|${o.side}|${o.time}`;
+        const key = obMergeKey(o);
         if (seen.has(key)) continue;
         seen.add(key);
-        merged.push(o);
-        if (merged.length >= WORLD_CAP) break;
+        freshOnly.push(o);
       }
+
+      // Merge with previous multi list so mitigated / fallen OBs stay visible
+      const prevMulti =
+        state.listMode === "multi" && state.multiObs && state.multiObs.length
+          ? state.multiObs
+          : state.listMode === "multi" && state.obs && state.obs.length
+            ? state.obs
+            : [];
+      const merged = mergeObLists(prevMulti, freshOnly, { cap: LIST_MERGE_CAP });
 
       state.listMode = "multi";
       state.multiObs = merged;
@@ -1144,12 +1227,15 @@
       for (const o of merged) {
         if (byTf[o.tf] != null) byTf[o.tf]++;
       }
+      const retained = Math.max(0, merged.length - freshOnly.length);
       setStatus(
-        `Scan monde 5★: ${merged.length} found (${active} active) · H1 ${byTf.H1} · M15 ${byTf.M15} · M5 ${byTf.M5} · ${symbols.length}×3 TF`
+        `Scan monde 5★: ${merged.length} kept (${freshOnly.length} this scan` +
+          (retained ? `, +${retained} retained` : "") +
+          `) · ${active} active · H1 ${byTf.H1} · M15 ${byTf.M15} · M5 ${byTf.M5}`
       );
       el.chartTitle.textContent = `Scan monde 5★ · M5+M15+H1`;
       el.sourceNote.textContent =
-        `Merged from ${symbols.length} symbols × 3 TF · each row shows symbole + TF · click to open chart`;
+        `Merge keep · ${symbols.length} symbols × 3 TF · click a row to open chart`;
     } catch (err) {
       console.error(err);
       showError(`Scan monde failed: ${err.message}`);
@@ -1248,7 +1334,7 @@
   }
 
   // Expose for selftest / console
-  window.__OB = { detectOrderBlocks, scoreOb, computeSlTp, scanWorldFiveStars, state, WATCHLIST };
+  window.__OB = { detectOrderBlocks, scoreOb, computeSlTp, scanWorldFiveStars, mergeObLists, obMergeKey, state, WATCHLIST };
 
   // boot
   wireUi();
