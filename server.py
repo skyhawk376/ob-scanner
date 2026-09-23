@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -25,8 +26,13 @@ ROOT = Path(__file__).resolve().parent
 CACHE_DIR = ROOT / "cache"
 CHECKS_DIR = ROOT / "data" / "checks"
 PORT = 8765
-CACHE_TTL = 60  # seconds
+CACHE_TTL = 180  # memory TTL seconds (was 60; Yahoo/XAU need longer)
+# Serve disk immediately when present; treat as fresh for this many seconds
+# before a background live refresh is scheduled.
+DISK_FRESH_SEC = 300
 CACHE: dict[str, tuple[float, bytes, str]] = {}
+_refresh_lock = threading.Lock()
+_refreshing: set[str] = set()
 
 # Personal sync codes for checked OBs (cloud). Alphabet omits 0/O/1/I.
 SYNC_CODE_RE = re.compile(r"^OB-[A-Z2-9]{8,12}$")
@@ -170,17 +176,107 @@ def write_disk_cache(payload: dict) -> None:
         pass
 
 
-def read_disk_cache(symbol: str, tf: str) -> dict | None:
+def read_disk_cache_raw(symbol: str, tf: str) -> tuple[dict | None, float | None]:
+    """Return (payload, age_sec). age_sec is None if missing/unreadable/empty."""
     path = disk_cache_path(symbol, tf)
-    if not path.exists():
-        return None
+    if not path.exists() or path.stat().st_size < 8:
+        return None, None
     try:
+        age = time.time() - path.stat().st_mtime
         data = json.loads(path.read_text())
-        data["from_disk"] = True
-        data["note"] = (data.get("note") or "") + " · stale disk cache (live fetch unavailable)"
-        return data
+        if not data.get("candles"):
+            return None, None
+        return data, age
     except Exception:
+        return None, None
+
+
+def read_disk_cache(symbol: str, tf: str) -> dict | None:
+    """Fallback reader after live failure (marks from_disk + note)."""
+    data, _age = read_disk_cache_raw(symbol, tf)
+    if not data:
         return None
+    data = dict(data)
+    data["from_disk"] = True
+    data["stale"] = True
+    note = (data.get("note") or "").strip()
+    suffix = "stale disk cache (live fetch unavailable)"
+    if suffix not in note:
+        data["note"] = (note + " · " if note else "") + suffix
+    return data
+
+
+def _live_fetch_and_store(symbol: str, tf: str) -> dict:
+    """Blocking upstream fetch; updates disk + memory cache. Raises on failure."""
+    provider, remote, note = SYMBOLS[symbol]
+    gran, y_int, y_range = TF_MAP[tf]
+    cache_key = f"{symbol}:{tf}"
+    now = time.time()
+
+    if provider == "coinbase":
+        url = f"https://api.exchange.coinbase.com/products/{remote}/candles?granularity={gran}"
+        raw = json.loads(http_get(url).decode())
+        candles = normalize_coinbase(raw)
+        source = f"coinbase:{remote}"
+    else:
+        hosts = (
+            "https://query2.finance.yahoo.com",
+            "https://query1.finance.yahoo.com",
+        )
+        raw = None
+        last_err: Exception | None = None
+        for host in hosts:
+            url = (
+                f"{host}/v8/finance/chart/"
+                f"{urllib.parse.quote(remote)}?interval={y_int}&range={y_range}"
+            )
+            try:
+                raw = json.loads(http_get(url).decode())
+                break
+            except Exception as e:
+                last_err = e
+                time.sleep(0.5)
+        if raw is None:
+            raise last_err or RuntimeError("Yahoo fetch failed")
+        candles = normalize_yahoo(raw)
+        source = f"yahoo:{remote}"
+
+    payload = {
+        "symbol": symbol,
+        "tf": tf,
+        "source": source,
+        "note": note,
+        "count": len(candles),
+        "cached_for_sec": CACHE_TTL,
+        "candles": candles,
+        "from_disk": False,
+        "stale": False,
+    }
+    write_disk_cache(payload)
+    body = json.dumps(payload).encode()
+    CACHE[cache_key] = (now + CACHE_TTL, body, "application/json")
+    return payload
+
+
+def _bg_refresh(symbol: str, tf: str) -> None:
+    key = f"{symbol}:{tf}"
+    try:
+        _live_fetch_and_store(symbol, tf)
+    except Exception:
+        pass
+    finally:
+        with _refresh_lock:
+            _refreshing.discard(key)
+
+
+def _schedule_bg_refresh(symbol: str, tf: str) -> None:
+    key = f"{symbol}:{tf}"
+    with _refresh_lock:
+        if key in _refreshing:
+            return
+        _refreshing.add(key)
+    t = threading.Thread(target=_bg_refresh, args=(symbol, tf), daemon=True)
+    t.start()
 
 
 def fetch_candles(symbol: str, tf: str) -> dict:
@@ -189,70 +285,50 @@ def fetch_candles(symbol: str, tf: str) -> dict:
     if tf not in TF_MAP:
         raise ValueError(f"Unknown TF {tf}. Known: {list(TF_MAP)}")
 
-    provider, remote, note = SYMBOLS[symbol]
-    gran, y_int, y_range = TF_MAP[tf]
     cache_key = f"{symbol}:{tf}"
-
     now = time.time()
     if cache_key in CACHE:
         exp, body, ctype = CACHE[cache_key]
         if now < exp:
             return json.loads(body.decode())
 
-    try:
-        if provider == "coinbase":
-            # Coinbase returns max ~300 candles; for H1/M15 that's enough for OB scan
-            url = f"https://api.exchange.coinbase.com/products/{remote}/candles?granularity={gran}"
-            raw = json.loads(http_get(url).decode())
-            candles = normalize_coinbase(raw)
-            source = f"coinbase:{remote}"
+    # Disk-first: return immediately when a usable cache file exists (fast first paint).
+    disk, age = read_disk_cache_raw(symbol, tf)
+    if disk and disk.get("candles"):
+        stale = age is None or age > DISK_FRESH_SEC
+        payload = dict(disk)
+        payload["from_disk"] = True
+        payload["stale"] = bool(stale)
+        payload["disk_age_sec"] = round(age, 1) if age is not None else None
+        payload["cached_for_sec"] = CACHE_TTL
+        note = (payload.get("note") or "").strip()
+        if stale:
+            tag = "disk cache served (refreshing in background)"
+            if tag not in note:
+                payload["note"] = (note + " · " if note else "") + tag
+            _schedule_bg_refresh(symbol, tf)
+            # short mem TTL so next request can pick up refreshed file soon
+            mem_ttl = 30
         else:
-            hosts = (
-                "https://query2.finance.yahoo.com",
-                "https://query1.finance.yahoo.com",
-            )
-            raw = None
-            last_err: Exception | None = None
-            for host in hosts:
-                url = (
-                    f"{host}/v8/finance/chart/"
-                    f"{urllib.parse.quote(remote)}?interval={y_int}&range={y_range}"
-                )
-                try:
-                    raw = json.loads(http_get(url).decode())
-                    break
-                except Exception as e:
-                    last_err = e
-                    time.sleep(0.5)
-            if raw is None:
-                raise last_err or RuntimeError("Yahoo fetch failed")
-            candles = normalize_yahoo(raw)
-            source = f"yahoo:{remote}"
-
-        payload = {
-            "symbol": symbol,
-            "tf": tf,
-            "source": source,
-            "note": note,
-            "count": len(candles),
-            "cached_for_sec": CACHE_TTL,
-            "candles": candles,
-            "from_disk": False,
-        }
-        write_disk_cache(payload)
+            # still refresh in background if older than memory TTL window
+            if age is not None and age > CACHE_TTL:
+                _schedule_bg_refresh(symbol, tf)
+            mem_ttl = CACHE_TTL
         body = json.dumps(payload).encode()
-        CACHE[cache_key] = (now + CACHE_TTL, body, "application/json")
+        CACHE[cache_key] = (now + mem_ttl, body, "application/json")
         return payload
+
+    # No disk: blocking live fetch
+    try:
+        return _live_fetch_and_store(symbol, tf)
     except Exception as e:
         stale = read_disk_cache(symbol, tf)
         if stale and stale.get("candles"):
             stale["live_error"] = str(e)
             body = json.dumps(stale).encode()
-            # shorter memory cache for stale so we retry live sooner
             CACHE[cache_key] = (now + 20, body, "application/json")
             return stale
         raise
-
 
 
 def normalize_sync_code(code: str | None) -> str | None:

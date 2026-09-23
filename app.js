@@ -997,7 +997,7 @@
     opts = opts || {};
     const chartOnly = !!opts.chartOnly; // keep multi-scan list; only refresh candles/chart
     showError("");
-    setStatus(`Loading ${state.symbol} ${state.tf}…`);
+    setStatus(`Chargement bougies ${state.symbol} ${state.tf}…`);
     if (!chartOnly) {
       el.chartTitle.textContent = `${state.symbol} · ${state.tf}`;
     }
@@ -1012,7 +1012,9 @@
         throw new Error("No candles returned");
       }
       state.candles = data.candles;
-      const stale = data.from_disk ? " · STALE CACHE" : "";
+      const stale = data.from_disk
+        ? (data.stale ? " · DISK (refreshing)" : " · DISK")
+        : "";
       state.sourceNote = `${data.source || ""} · ${data.count} bars${stale}`;
       if (data.note) state.sourceNote += ` · ${data.note}`;
       el.sourceNote.textContent = state.sourceNote;
@@ -1336,15 +1338,24 @@
   // Expose for selftest / console
   window.__OB = { detectOrderBlocks, scoreOb, computeSlTp, scanWorldFiveStars, mergeObLists, obMergeKey, state, WATCHLIST };
 
-  // boot
+  // boot — paint shell immediately, then load candles (don't feel blank)
   wireUi();
   initChart();
-  // If a sync code is already stored, pull cloud (union) then load candles
+  setStatus("Chargement bougies…");
+  if (el.chartTitle) el.chartTitle.textContent = `${state.symbol} · ${state.tf}`;
+  renderList();
   (async function boot() {
-    const code = getStoredSyncCode();
-    if (code) {
-      await linkAndLoadSyncCode(code, { silent: true });
+    try {
+      const code = getStoredSyncCode();
+      if (code) {
+        setStatus("Sync + chargement bougies…");
+        await linkAndLoadSyncCode(code, { silent: true });
+      }
+      await loadData();
+    } catch (err) {
+      console.error(err);
+      showError(`Démarrage: ${err.message || err}`);
+      setStatus("Erreur au démarrage — voir bannière");
     }
-    loadData();
   })();
 })();
